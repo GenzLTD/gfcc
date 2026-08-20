@@ -10,6 +10,15 @@
 | am-gateway | 3210 | agentmemory 认证网关（对外唯一入口） | 本仓库构建 |
 | am-bridge | 内部 | 记忆 REST 桥（Node，`mem::*` 跨 worker 直调） | 本仓库构建 |
 | am-engine | 内部 | 黑盒记忆引擎（**不暴露宿主端口**） | `iiidev/iii:0.11.2` |
+| gfcc_kernel | 5211 | 格契内核（契约信封 `/v1/ask` + 五槽 + 五端口），宿主机 Python 进程，不走 docker | 本地 pip 安装 |
+
+> **gfcc_kernel 启动方式**（Step3 联调时 Mac/Windows 侧均适用）：
+> ```bash
+> pip install -e services/ethos -e services/gfcc_kernel   # ethos 是本地路径依赖，必须联合安装
+> uvicorn gfcc_kernel.app:app --host 0.0.0.0 --port 5211
+> curl http://localhost:5211/health   # {"service":"gfcc_kernel","version":"1.1.0",...}
+> ```
+> 槽位由环境变量装配：`LLM_PROVIDER`（stub/ollama）、`STORE_PROVIDER`（stub/sqlite）、`STORE_DB_PATH`、`OLLAMA_MODEL`、`OLLAMA_BASE_URL`、`CONSENSUS_THRESHOLD`（默认 85），详见 `.env.example`。
 
 ## 2. 前置条件
 
@@ -94,7 +103,7 @@ docker compose up -d
 
 | 流水线 | 触发 | 行为 |
 |---|---|---|
-| `ci.yml` | push main / PR | 内核单元测试 → 构建并推送四镜像到 GHCR |
+| `ci.yml` | push main / PR | test-libs（ethos/tenet 单测 + tatha/gateway import）→ test-kernel（内核 52 项）→ test-contracts（契约 JSON 校验）→ 构建并推送四镜像到 GHCR |
 | `deploy.yml` | 手动 / tag `v*` | SCP 上传仓库 → SSH `compose pull && up` |
 
 deploy.yml 所需 GitHub Secrets：
