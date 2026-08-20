@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+{% block title %}文档管理 - szpeter2026{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📄 文档管理</h1>
+    <p class="subtitle">导入、查看、管理知识库文档</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📥 批量导入</h2>
+    </div>
+    <div class="card-body">
+        <!-- 模式切换 -->
+        <div class="import-tabs">
+            <button class="import-tab active" onclick="switchImportMode('upload')" id="tab-upload">📤 文件上传</button>
+            <button class="import-tab" onclick="switchImportMode('scan')" id="tab-scan">📂 目录扫描</button>
+        </div>
+
+        <!-- 文件上传模式 -->
+        <div id="mode-upload" class="import-mode">
+            <div class="import-area" id="import-area"
+                 ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDrop(event)">
+                <div class="import-icon">📂</div>
+                <p>点击选择文件或拖拽文件到此处</p>
+                <p class="import-hint">支持 .md / .pdf / .txt / .docx / .csv / .ipynb</p>
+                <input type="file" id="file-input" multiple
+                       accept=".md,.txt,.pdf,.docx,.csv,.ipynb"
+                       style="display:none" onchange="handleFileSelect(event)" />
+            </div>
+            <div id="file-list" class="file-list" style="display:none;"></div>
+            <div class="import-actions">
+                <button class="btn btn-primary" onclick="uploadFiles()" id="btn-upload">
+                    🚀 上传并导入 (<span id="upload-count">0</span>)
+                </button>
+                <button class="btn btn-secondary" onclick="clearFiles()">清空</button>
+            </div>
+        </div>
+
+        <!-- 目录扫描模式 -->
+        <div id="mode-scan" class="import-mode" style="display:none;">
+            <div class="import-area" onclick="triggerImport()">
+                <div class="import-icon">📂</div>
+                <p>扫描服务器本地目录</p>
+                <p class="import-hint">默认扫描 knowledge_base/documents/ 目录</p>
+            </div>
+            <div class="import-actions">
+                <button class="btn btn-primary" onclick="importDocuments()">🚀 开始导入</button>
+                <label class="import-path">
+                    <span>路径：</span>
+                    <input type="text" id="import-path" placeholder="knowledge_base/documents/" />
+                </label>
+            </div>
+        </div>
+
+        <div id="import-progress" class="progress-bar" style="display:none;">
+            <div class="progress-fill"></div>
+            <span class="progress-text"></span>
+        </div>
+        <div id="import-result"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📋 文档列表</h2>
+        <div class="filter-bar">
+            <select id="status-filter" onchange="loadDocuments()">
+                <option value="">全部状态</option>
+                <option value="completed">已完成</option>
+                <option value="pending">待处理</option>
+                <option value="failed">失败</option>
+            </select>
+            <button class="btn btn-sm" onclick="loadDocuments()">🔄 刷新</button>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="documents-loading">加载中...</div>
+        <table class="data-table" id="documents-table" style="display:none;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>标题</th>
+                    <th>类型</th>
+                    <th>大小</th>
+                    <th>分块数</th>
+                    <th>状态</th>
+                    <th>时间</th>
+                    <th>操作</th>
+                </tr>
+            </thead>
+            <tbody id="documents-tbody"></tbody>
+        </table>
+        <div id="documents-empty" class="empty-state" style="display:none;">
+            <p>📭 暂无文档，请先导入</p>
+        </div>
+    </div>
+</div>
+
+<div class="card" id="doc-detail-card" style="display:none;">
+    <div class="card-header">
+        <h2>📖 文档详情</h2>
+        <button class="btn btn-sm" onclick="document.getElementById('doc-detail-card').style.display='none'">✕ 关闭</button>
+    </div>
+    <div class="card-body" id="doc-detail-body"></div>
+</div>
+
+<script>
+let selectedFiles = [];
+let currentImportMode = 'upload';
+
+/* ===== 模式切换 ===== */
+function switchImportMode(mode) {
+    currentImportMode = mode;
+    document.getElementById('tab-upload').classList.toggle('active', mode === 'upload');
+    document.getElementById('tab-scan').classList.toggle('active', mode === 'scan');
+    document.getElementById('mode-upload').style.display = mode === 'upload' ? 'block' : 'none';
+    document.getElementById('mode-scan').style.display = mode === 'scan' ? 'block' : 'none';
+    document.getElementById('import-result').innerHTML = '';
+}
+
+/* ===== 文件上传：拖拽 + 选择 ===== */
+const importArea = document.getElementById('import-area');
+importArea.addEventListener('click', () => document.getElementById('file-input').click());
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    importArea.classList.add('drag-over');
+}
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    importArea.classList.remove('drag-over');
+}
+function handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    importArea.classList.remove('drag-over');
+    const files = Array.from(e.dataTransfer.files).filter(f => isSupported(f.name));
+    addFiles(files);
+}
+function handleFileSelect(e) {
+    const files = Array.from(e.target.files).filter(f => isSupported(f.name));
+    addFiles(files);
+}
+function isSupported(name) {
+    const ext = name.split('.').pop().toLowerCase();
+    return ['md','txt','pdf','docx','csv','ipynb'].includes(ext);
+}
+function addFiles(files) {
+    for (const f of files) {
+        if (!selectedFiles.find(sf => sf.name === f.name && sf.size === f.size)) {
+            selectedFiles.push(f);
+        }
+    }
+    renderFileList();
+}
+function renderFileList() {
+    const list = document.getElementById('file-list');
+    document.getElementById('upload-count').textContent = selectedFiles.length;
+    if (!selectedFiles.length) {
+        list.style.display = 'none';
+        return;
+    }
+    list.innerHTML = selectedFiles.map((f, i) => `
+        <div class="file-item">
+            <span class="file-name">${escapeHtml(f.name)}</span>
+            <span class="file-size">${formatSize(f.size)}</span>
+            <button class="btn btn-sm btn-danger" onclick="removeFile(${i})">✕</button>
+        </div>
+    `).join('');
+    list.style.display = 'block';
+}
+function removeFile(idx) {
+    selectedFiles.splice(idx, 1);
+    renderFileList();
+}
+function clearFiles() {
+    selectedFiles = [];
+    document.getElementById('file-input').value = '';
+    renderFileList();
+    document.getElementById('import-result').innerHTML = '';
+}
+
+/* ===== 文件上传提交 ===== */
+function uploadFiles() {
+    if (!selectedFiles.length) {
+        document.getElementById('import-result').innerHTML = '<div class="error">请先选择文件</div>';
+        return;
+    }
+    const progressDiv = document.getElementById('import-progress');
+    const resultDiv = document.getElementById('import-result');
+
+    progressDiv.style.display = 'block';
+    progressDiv.querySelector('.progress-text').textContent = '正在上传并解析...';
+    resultDiv.innerHTML = '';
+
+    const formData = new FormData();
+    for (const f of selectedFiles) {
+        formData.append('files', f);
+    }
+
+    fetch('/api/documents/upload', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.json().then(errData => {
+                throw new Error(errData.error || `HTTP ${r.status}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        progressDiv.style.display = 'none';
+        const details = data.details || [];
+        const failed = details.filter(d => d.status === 'failed');
+        const skipped = details.filter(d => d.status === 'skipped').length;
+        resultDiv.innerHTML = `
+            <div class="import-summary">
+                <span class="badge badge-green">✅ 成功 ${data.success || 0}</span>
+                <span class="badge badge-yellow">⏭ 跳过 ${skipped}</span>
+                <span class="badge badge-red">❌ 失败 ${data.failed || 0}</span>
+            </div>
+            ${failed.length ? '<div class="import-errors"><h4>失败详情：</h4>' + failed.map(f => `<p>📛 ${escapeHtml(f.title)}: ${escapeHtml(f.reason)}</p>`).join('') + '</div>' : ''}
+        `;
+        selectedFiles = [];
+        renderFileList();
+        loadDocuments();
+    })
+    .catch(err => {
+        progressDiv.style.display = 'none';
+        resultDiv.innerHTML = `<div class="error">❌ ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+/* ===== 目录扫描（保留） ===== */
+function triggerImport() {
+    document.getElementById('import-path').focus();
+}
+
+function importDocuments() {
+    const path = document.getElementById('import-path').value.trim() || null;
+    const progressDiv = document.getElementById('import-progress');
+    const resultDiv = document.getElementById('import-result');
+
+    progressDiv.style.display = 'block';
+    progressDiv.querySelector('.progress-text').textContent = '正在导入...';
+    resultDiv.innerHTML = '';
+
+    const body = path ? JSON.stringify({directory: path}) : '{}';
+    fetch('/api/documents/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.json().then(errData => {
+                throw new Error(errData.error || `HTTP ${r.status}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        progressDiv.style.display = 'none';
+        const details = data.details || [];
+        const failed = details.filter(d => d.status === 'failed');
+        const skipped = details.filter(d => d.status === 'skipped').length;
+        resultDiv.innerHTML = `
+            <div class="import-summary">
+                <span class="badge badge-green">✅ 成功 ${data.success || 0}</span>
+                <span class="badge badge-yellow">⏭ 跳过 ${skipped}</span>
+                <span class="badge badge-red">❌ 失败 ${data.failed || 0}</span>
+            </div>
+            ${failed.length ? '<div class="import-errors"><h4>失败详情：</h4>' + failed.map(f => `<p>📛 ${escapeHtml(f.title)}: ${escapeHtml(f.reason)}</p>`).join('') + '</div>' : ''}
+        `;
+        loadDocuments();
+    })
+    .catch(err => {
+        progressDiv.style.display = 'none';
+        resultDiv.innerHTML = `<div class="error">❌ ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+function loadDocuments() {
+    const path = document.getElementById('import-path').value.trim() || null;
+    const progressDiv = document.getElementById('import-progress');
+    const resultDiv = document.getElementById('import-result');
+
+    progressDiv.style.display = 'block';
+    progressDiv.querySelector('.progress-text').textContent = '正在导入...';
+    resultDiv.innerHTML = '';
+
+    const body = path ? JSON.stringify({directory: path}) : '{}';
+    fetch('/api/documents/import', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: body
+    })
+    .then(r => {
+        if (!r.ok) {
+            return r.json().then(errData => {
+                throw new Error(errData.error || `HTTP ${r.status}`);
+            });
+        }
+        return r.json();
+    })
+    .then(data => {
+        progressDiv.style.display = 'none';
+        const details = data.details || [];
+        const failed = details.filter(d => d.status === 'failed');
+        const skipped = details.filter(d => d.status === 'skipped').length;
+        resultDiv.innerHTML = `
+            <div class="import-summary">
+                <span class="badge badge-green">✅ 成功 ${data.success || 0}</span>
+                <span class="badge badge-yellow">⏭ 跳过 ${skipped}</span>
+                <span class="badge badge-red">❌ 失败 ${data.failed || 0}</span>
+            </div>
+            ${failed.length ? '<div class="import-errors"><h4>失败详情：</h4>' + failed.map(f => `<p>📛 ${escapeHtml(f.title)}: ${escapeHtml(f.reason)}</p>`).join('') + '</div>' : ''}
+        `;
+        loadDocuments();
+    })
+    .catch(err => {
+        progressDiv.style.display = 'none';
+        resultDiv.innerHTML = `<div class="error">❌ ${escapeHtml(err.message)}</div>`;
+    });
+}
+
+function loadDocuments() {
+    const status = document.getElementById('status-filter').value;
+    const params = status ? `?status=${status}` : '';
+
+    fetch('/api/documents' + params)
+    .then(r => r.json())
+    .then(docs => {
+        document.getElementById('documents-loading').style.display = 'none';
+        const table = document.getElementById('documents-table');
+        const empty = document.getElementById('documents-empty');
+        const tbody = document.getElementById('documents-tbody');
+
+        if (!docs.length) {
+            table.style.display = 'none';
+            empty.style.display = 'block';
+            return;
+        }
+
+        table.style.display = 'table';
+        empty.style.display = 'none';
+        tbody.innerHTML = docs.map(d => `
+            <tr>
+                <td>${d.id}</td>
+                <td class="doc-title" onclick="viewDocument(${d.id})">${escapeHtml(d.title)}</td>
+                <td><span class="doc-type doc-type-${d.doc_type}">${d.doc_type}</span></td>
+                <td>${formatSize(d.file_size)}</td>
+                <td>${d.chunk_count || '-'}</td>
+                <td><span class="badge badge-${d.status === 'completed' ? 'green' : d.status === 'failed' ? 'red' : 'yellow'}">${d.status}</span></td>
+                <td>${(d.created_at || '').slice(0, 10)}</td>
+                <td>
+                    <button class="btn btn-sm" onclick="viewDocument(${d.id})">📋</button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteDocument(${d.id})">🗑</button>
+                </td>
+            </tr>
+        `).join('');
+    });
+}
+
+function viewDocument(id) {
+    fetch(`/api/documents/${id}`)
+    .then(r => r.json())
+    .then(doc => {
+        const card = document.getElementById('doc-detail-card');
+        const body = document.getElementById('doc-detail-body');
+        card.style.display = 'block';
+        body.innerHTML = `
+            <div class="doc-detail-info">
+                <p><strong>标题：</strong>${escapeHtml(doc.title)}</p>
+                <p><strong>路径：</strong>${escapeHtml(doc.file_path)}</p>
+                <p><strong>类型：</strong>${doc.doc_type} | <strong>大小：</strong>${formatSize(doc.file_size)}</p>
+                <p><strong>分块数：</strong>${doc.chunk_count} | <strong>状态：</strong>${doc.status}</p>
+            </div>
+            <h4>📝 分块预览（前3块）</h4>
+            ${(doc.chunks || []).slice(0, 3).map((c, i) => `
+                <div class="chunk-preview">
+                    <h5>分块 #${c.chunk_index} (${c.char_count} 字符)</h5>
+                    <pre>${escapeHtml(c.content.slice(0, 500))}${c.content.length > 500 ? '...' : ''}</pre>
+                </div>
+            `).join('')}
+        `;
+        card.scrollIntoView({behavior: 'smooth'});
+    });
+}
+
+function deleteDocument(id) {
+    if (!confirm('确认删除该文档及其所有分块和向量数据？')) return;
+    fetch(`/api/documents/${id}`, {method: 'DELETE'})
+    .then(r => r.json())
+    .then(() => {
+        loadDocuments();
+        document.getElementById('doc-detail-card').style.display = 'none';
+    });
+}
+
+function formatSize(bytes) {
+    if (!bytes) return '-';
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/(1024*1024)).toFixed(1) + ' MB';
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+loadDocuments();
+</script>
+{% endblock %}

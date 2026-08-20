@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}仪表盘 - szpeter2026{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 知识库仪表盘</h1>
+    <p class="subtitle">实时监控知识库状态 | AI: {{ ai_provider }}</p>
+</div>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon">📄</div>
+        <div class="stat-value" id="stat-docs">{{ stats.documents_total }}</div>
+        <div class="stat-label">文档总数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">✅</div>
+        <div class="stat-value" id="stat-completed">{{ stats.documents_completed }}</div>
+        <div class="stat-label">已处理</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🧩</div>
+        <div class="stat-value" id="stat-chunks">{{ stats.chunks_total }}</div>
+        <div class="stat-label">分块总数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🔤</div>
+        <div class="stat-value" id="stat-chars">{{ '{:,}'.format(stats.total_characters) }}</div>
+        <div class="stat-label">总字符数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">💬</div>
+        <div class="stat-value" id="stat-queries">{{ stats.queries_total }}</div>
+        <div class="stat-label">历史查询</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🧬</div>
+        <div class="stat-value" id="stat-vectors">{{ vec_stats.get('total_vectors', 'N/A') }}</div>
+        <div class="stat-label">Chroma 向量数</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🗄️</div>
+        <div class="stat-value" id="stat-pgvectors">{{ pg_stats.get('total_vectors', 'N/A') }}</div>
+        <div class="stat-label">pgvector 向量数</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>🔍 快速问答</h2>
+        <span class="badge">{{ ai_provider }}</span>
+    </div>
+    <div class="card-body">
+        <div class="quick-query">
+            <textarea id="quick-query-input" rows="2" placeholder="输入问题，快速搜索知识库..."></textarea>
+            <button class="btn btn-primary" onclick="quickQuery()">🔍 搜索</button>
+        </div>
+        <div id="quick-query-result" class="query-result" style="display:none;"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>⚡ 系统状态</h2>
+        <span id="system-status" class="badge badge-green">正常</span>
+    </div>
+    <div class="card-body">
+        <div class="system-info">
+            <div><strong>AI 提供商：</strong>{{ ai_provider }}</div>
+            <div><strong>Chroma 向量库：</strong><span id="chroma-status">{{ vec_stats.get('mode', '不可用') }} ({{ vec_stats.get('total_vectors', 0) }} 向量)</span></div>
+            <div><strong>pgvector：</strong><span id="pg-status">{{ pg_stats.get('mode', '不可用') }}{% if pg_stats.get('available') %} | {{ pg_stats.embedding_model }} ({{ pg_stats.total_vectors }} 向量){% endif %}</span></div>
+            <div><strong>元数据库：</strong>SQLite (szpeter2026.db)</div>
+        </div>
+    </div>
+</div>
+
+<script>
+function quickQuery() {
+    const input = document.getElementById('quick-query-input');
+    const resultDiv = document.getElementById('quick-query-result');
+    const query = input.value.trim();
+    if (!query) return;
+
+    resultDiv.style.display = 'block';
+    resultDiv.innerHTML = '<div class="loading">⏳ 正在思考...</div>';
+
+    fetch('/api/rag/query', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query: query, top_k: 5, threshold: 0.5})
+    })
+    .then(r => r.json())
+    .then(data => {
+        resultDiv.innerHTML = `
+            <div class="answer-box">
+                <h4>💡 回答 <small>(${data.response_time_ms.toFixed(0)}ms, ${data.chunk_count} 块)</small></h4>
+                <div class="answer-text">${escapeHtml(data.answer).replace(/\n/g, '<br>')}</div>
+                ${data.sources.length ? `
+                <div class="sources">
+                    <h4>📚 参考来源</h4>
+                    ${data.sources.map((s, i) => `
+                        <div class="source-item">
+                            <span class="source-badge">#${i+1}</span>
+                            <span class="source-name">${escapeHtml(s.source)}</span>
+                            <span class="source-score">相似度: ${(s.similarity*100).toFixed(1)}%</span>
+                            <p class="source-content">${escapeHtml(s.content)}</p>
+                        </div>
+                    `).join('')}
+                </div>` : ''}
+            </div>`;
+    })
+    .catch(err => {
+        resultDiv.innerHTML = `<div class="error">❌ 查询失败: ${err.message}</div>`;
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// 自动刷新统计
+setInterval(() => {
+    fetch('/api/stats').then(r => r.json()).then(s => {
+        document.getElementById('stat-docs').textContent = s.documents_total;
+        document.getElementById('stat-completed').textContent = s.documents_completed;
+        document.getElementById('stat-chunks').textContent = s.chunks_total;
+        document.getElementById('stat-chars').textContent = s.total_characters.toLocaleString();
+        document.getElementById('stat-queries').textContent = s.queries_total;
+        document.getElementById('stat-vectors').textContent = (s.chroma || {}).total_vectors || 'N/A';
+        document.getElementById('stat-pgvectors').textContent = (s.pgvector || {}).available ? (s.pgvector.total_vectors || 0) : '未启用';
+    });
+}, 10000);
+</script>
+{% endblock %}

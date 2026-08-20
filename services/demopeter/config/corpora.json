@@ -1,0 +1,17 @@
+{
+  "description": "DemoPeter 融合测试语料 — 科锐国际财报 + 数据分析Python实战",
+  "sources": [
+    {
+      "id": "careerintl",
+      "label": "科锐国际",
+      "path": "/Users/jason/Projects/300662科锐国际",
+      "description": "300662 科锐国际上市公司季报/年报 PDF 与 DOCX"
+    },
+    {
+      "id": "python_data_analysis",
+      "label": "数据分析与Python实战",
+      "path": "/Users/jason/Projects/数据分析与python实战-代码",
+      "description": "Jupyter Notebook、CSV 数据与 readme"
+    }
+  ]
+}

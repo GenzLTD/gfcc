@@ -1,0 +1,64 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# 数据库
+*.db
+db/*.db
+
+# 环境变量
+.env
+.env.production
+
+# Token / 密钥
+db/outlook_tokens.json
+macos.token
+*.token
+
+# IDE
+.vscode/
+.idea/
+
+# 报告
+reports/*.pdf
+reports/*.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vs/
+
+# 向量数据库 (本地 Chroma)
+db/chroma_data/
+data/
+
+# Docker 构建产物
+docker-images/
+docker/
+eth_data/
+nine_repos_staging/
+
+# 预处理输出（大型语料）
+md_import_staging/processed/
+db/documents.jsonl
+import_staging/
+
+# 临时文件
+*.txt
+temp/
+tmp/
+
+# 日志文件
+*.log
+logs/
+
+# ChromaDB ���ݿ��ļ�
+db/d_index_data/
+db/d_index_v2/

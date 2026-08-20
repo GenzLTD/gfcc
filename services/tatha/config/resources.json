@@ -1,0 +1,14 @@
+{
+  "chinese-poetry": {
+    "win32":  "E:/FiveBlessings/chinese-poetry",
+    "darwin": "${HOME}/FiveBlessings/chinese-poetry",
+    "linux":  "/srv/data/chinese-poetry",
+    "any":    "FiveBlessings/chinese-poetry"
+  },
+  "chroma.poetry_full": {
+    "any": "${TATHA_ROOT}/.data/chroma/poetry_full"
+  },
+  "chroma.poetry": {
+    "any": "${TATHA_ROOT}/.data/chroma/poetry"
+  }
+}

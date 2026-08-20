@@ -1,0 +1,219 @@
+# ============================================================
+# szpeter2026 知识库 — 安全加固 Docker Compose 配置
+# ============================================================
+# 本地开发:  docker compose up -d
+# 生产部署:  docker compose --profile production up -d
+# 停止:     docker compose down
+# 更新:     docker compose up -d --build
+# 日志:     docker compose logs -f web
+# ============================================================
+
+services:
+
+  # ============================================
+  # Nginx 反向代理（仅生产模式启用）
+  # ============================================
+  nginx:
+    build:
+      context: ./docker/nginx
+      dockerfile: Dockerfile
+    image: szpeter2026-nginx:latest
+    container_name: szpeter2026-nginx
+    restart: unless-stopped
+    profiles:
+      - production
+    ports:
+      - "80:80"
+      - "443:443"
+    # 安全加固
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    mem_limit: 256m
+    cpus: 0.5
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - szpeter2026-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ============================================
+  # Flask Web 面板（Gunicorn 生产模式）
+  # ============================================
+  web:
+    build: .
+    image: szpeter2026-web:latest
+    container_name: szpeter2026-web
+    restart: unless-stopped
+    # 安全加固
+    read_only: false  # 需要写权限（日志、上传文件）
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    mem_limit: 2g
+    cpus: 2.0
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5220/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    ports:
+      - "5220:5220"
+    volumes:
+      # 数据持久化 → C 盘
+      - C:/DemoPeterTemp/db:/app/db:rw
+      - C:/DemoPeterTemp/knowledge_base:/app/knowledge_base:ro
+      # 预处理语料（JSONL 批量入库）
+      - C:/DemoPeterTemp:/app/import_staging:ro
+      # 临时文件、日志
+      - C:/DemoPeterTemp/tmp:/app/tmp:rw
+      - C:/DemoPeterTemp/logs:/app/logs:rw
+    env_file:
+      - .env.production
+    environment:
+      # 覆盖 .env 中的调试模式
+      - WEB_DEBUG=false
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+    depends_on:
+      chroma:
+        condition: service_started
+      pgvector:
+        condition: service_healthy
+    networks:
+      - szpeter2026-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    # 以非 root 用户运行（需要在 Dockerfile 中创建）
+    # user: "1000:1000"
+
+  # ============================================
+  # Chroma 向量数据库（主）
+  # ============================================
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: szpeter2026-chroma
+    restart: unless-stopped
+    # 安全加固
+    read_only: false  # Chroma 需要写权限
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+    mem_limit: 4g
+    cpus: 2.0
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    # 端口统一规划：8000 归 knowledge-api，Chroma 宿主机侧用 8001（容器内仍 8000）
+    ports:
+      - "8001:8000"
+    volumes:
+      - C:/DemoPeterTemp/db/chroma_docker:/chroma/chroma:rw
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+      - PERSIST_DIRECTORY=/chroma/chroma
+      # 禁用遥测
+      - CHROMA_SERVER_NOFILE=65535
+    networks:
+      - szpeter2026-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ============================================
+  # pgvector（可选，不需要可注释掉整个块）
+  # ============================================
+  pgvector:
+    image: pgvector/pgvector:pg17
+    container_name: szpeter2026-pgvector
+    restart: unless-stopped
+    # 安全加固
+    read_only: false  # PostgreSQL 需要写权限
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - SETGID
+      - SETUID
+      - CHOWN
+    mem_limit: 2g
+    cpus: 1.0
+    # 端口映射（如需要外部访问）
+    ports:
+      - "5432:5432"
+    volumes:
+      - C:/DemoPeterTemp/db/pgdata:/var/lib/postgresql/data:rw
+      - C:/DemoPeterTemp/db/pg-init:/docker-entrypoint-initdb.d:ro
+    environment:
+      POSTGRES_USER: ${PGVECTOR_USER:-szpeter}
+      POSTGRES_PASSWORD: ${PGVECTOR_PASSWORD:-Szpeter2026!}
+      POSTGRES_DB: ${PGVECTOR_DATABASE:-szpeter2026}
+      # 安全配置
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --auth-local=peer"
+      POSTGRES_HOST_AUTH_METHOD: "scram-sha-256"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGVECTOR_USER:-szpeter} -d ${PGVECTOR_DATABASE:-szpeter2026}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - szpeter2026-net
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+networks:
+  szpeter2026-net:
+    driver: bridge
+    # 启用网络隔离
+    driver_opts:
+      com.docker.network.bridge.enable_icc: "false"
+      com.docker.network.bridge.enable_ip_masquerade: "true"
+
+# 命名卷（可选，用于更好的数据隔离）
+volumes:
+  chroma_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: C:/DemoPeterTemp/db/chroma_docker
+      o: bind
+  pgvector_data:
+    driver: local
+    driver_opts:
+      type: none
+      device: C:/DemoPeterTemp/db/pgdata
+      o: bind

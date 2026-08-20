@@ -1,0 +1,19 @@
+# gfcc agentmemory REST 桥（黑盒引擎 mem::* 跨 worker 直调）
+# 构建（在仓库根执行）：
+#   docker build -f services/agentmemory/Dockerfile.bridge -t gfcc/am-bridge .
+#
+# 说明：桥绕过 iii-engine 损坏的 HTTP body 传输层，经 iii-sdk 跨 worker
+# 直调 mem::* 函数。@agentmemory/agentmemory 自带 iii-sdk 依赖。
+# 容器内必须设 AM_BRIDGE_HOST=0.0.0.0（默认 127.0.0.1 导致网关连不上桥）。
+
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN npm install --no-cache @agentmemory/agentmemory@0.9.29
+
+COPY services/agentmemory/am-bridge.mjs /app/am-bridge.mjs
+
+EXPOSE 3220
+
+CMD ["node", "am-bridge.mjs"]

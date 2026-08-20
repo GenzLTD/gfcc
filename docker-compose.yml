@@ -1,0 +1,161 @@
+# ============================================================
+# gfcc — 智能体体系单栈编排
+# 中央大脑(Tatha) + 安全底座(ethos) + RAG 知识库(DemoPeter) + 长期记忆(agentmemory)
+#
+# 使用：
+#   1. cp .env.example .env && 按需修改
+#   2. docker compose up -d --build
+#   3. 健康检查：curl http://localhost:5210/v1/region
+#
+# 数据边界（用户自理）：am_data / chroma_data / demopeter_db 三个卷首次启动为空库，
+#   用户通过 tools/import_memories.py（记忆）与 DemoPeter 上传/导入 API（知识库）自行灌数据。
+# ============================================================
+
+name: gfcc
+
+services:
+
+  # ---------- agentmemory 记忆引擎（黑盒，不暴露宿主端口） ----------
+  am-init:
+    image: busybox:1.36
+    user: "0:0"
+    volumes:
+      - am_data:/data
+    entrypoint: ["sh", "-c", "chown -R 65532:65532 /data && chmod 755 /data"]
+    restart: "no"
+
+  am-engine:
+    image: iiidev/iii:${AGENTMEMORY_III_VERSION:-0.11.2}
+    user: "65532:65532"
+    depends_on:
+      am-init:
+        condition: service_completed_successfully
+    volumes:
+      - am_data:/data
+      - ./services/agentmemory/iii-config.docker.yaml:/app/config.yaml:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3111').catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- 记忆 REST 桥（Node，mem::* 跨 worker 直调） ----------
+  am-bridge:
+    build:
+      context: .
+      dockerfile: services/agentmemory/Dockerfile.bridge
+    environment:
+      AM_ENGINE_URL: ws://am-engine:49134
+      AM_BRIDGE_HOST: 0.0.0.0
+      AM_BRIDGE_PORT: "3220"
+      AM_REST_URL: http://am-engine:3111
+    depends_on:
+      am-engine:
+        condition: service_healthy
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- agentmemory 认证网关（对外唯一入口 :3210） ----------
+  am-gateway:
+    build:
+      context: .
+      dockerfile: services/agentmemory/Dockerfile.gateway
+    ports:
+      - "${AM_GATEWAY_PORT:-3210}:3210"
+    environment:
+      AM_ENGINE_HTTP: http://am-engine:3111
+      AM_ENGINE_STREAM: http://am-engine:3112
+      AM_BRIDGE_HTTP: http://am-bridge:3220
+      AM_AUDIT_DB: /data/ethos_audit.db
+      AM_UPSTREAM_TIMEOUT: "60"
+      AM_RATE_LIMIT: "60"
+      ETHOS_AUTH_SECRET: ${ETHOS_AUTH_SECRET:-}
+    volumes:
+      - am_data:/data
+    depends_on:
+      am-engine:
+        condition: service_healthy
+      am-bridge:
+        condition: service_started
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  # ---------- RAG 向量库（Chroma） ----------
+  chroma:
+    image: chromadb/chroma:latest
+    volumes:
+      - chroma_data:/data
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+
+  # ---------- RAG 知识库（DemoPeter :5220） ----------
+  demopeter:
+    build:
+      context: .
+      dockerfile: services/demopeter/Dockerfile
+    ports:
+      - "${DEMOPETER_PORT:-5220}:5220"
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
+      DEEPSEEK_MODEL: ${DEEPSEEK_MODEL:-deepseek-chat}
+      AI_PROVIDER: ${AI_PROVIDER:-deepseek}
+      CHROMA_MODE: remote
+      CHROMA_HOST: chroma
+      CHROMA_PORT: "8000"
+      CHROMA_COLLECTION: ${CHROMA_COLLECTION:-gfcc_index}
+      SEARCH_MODE: hybrid
+      HYBRID_RRF_K: "60"
+      PGVECTOR_ENABLED: "false"
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      WEB_HOST: 0.0.0.0
+      WEB_PORT: "5220"
+      WEB_DEBUG: "false"
+      ETHOS_AUTH_SECRET: ${ETHOS_AUTH_SECRET:-}
+    volumes:
+      - demopeter_db:/app/db
+    depends_on:
+      chroma:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---------- 中央大脑（Tatha :5210，单入口 /v1/ask） ----------
+  tatha:
+    build:
+      context: .
+      dockerfile: services/tatha/Dockerfile
+    ports:
+      - "${TATHA_PORT:-5210}:5210"
+    environment:
+      ETHOS_AUTH_SECRET: ${ETHOS_AUTH_SECRET:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      TATHA_DEFAULT_MODEL: ${TATHA_DEFAULT_MODEL:-deepseek/deepseek-chat}
+      TATHA_USE_LLM_INTENT: "false"
+      # 下游服务：compose 网络内服务名互访
+      TATHA_KNOWLEDGE_URL: http://demopeter:5220
+      TATHA_MEMORY_URL: http://am-gateway:3210
+    volumes:
+      - tatha_logs:/opt/tatha/logs
+    depends_on:
+      demopeter:
+        condition: service_started
+      am-gateway:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  am_data:
+  chroma_data:
+  demopeter_db:
+  tatha_logs:

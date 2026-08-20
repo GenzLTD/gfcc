@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tenet"
+version = "0.1.0"
+description = "Tenet —— 跨平台共享 AI 管道内核（认证/鉴权/审计 + 服务发现/资源定位）"
+requires-python = ">=3.10"
+license = { text = "Proprietary" }
+authors = [{ name = "szjason72" }]
+keywords = ["ai", "share-core", "security", "resolver"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+]
+
+[project.optional-dependencies]
+# Consul 服务发现（可选）：不装时 StaticServiceLocator 照常工作
+resolver-consul = ["httpx>=0.27"]
+# 开发测试
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]

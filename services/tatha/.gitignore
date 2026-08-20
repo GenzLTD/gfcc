@@ -1,0 +1,33 @@
+# env and venv
+.env
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.swp
+*.swo
+
+# Local and secrets
+*.local
+*.key
+*.pem
+
+# 私有索引与数据（简历等敏感数据，不提交）
+.data/
+
+# 本地验收输出（不提交）
+verify_v0_result.txt

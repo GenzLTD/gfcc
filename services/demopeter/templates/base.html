@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}szpeter2026 知识库{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="sidebar-brand">
+            <h2>🧠 szpeter2026</h2>
+            <p>知识库平台</p>
+        </div>
+        <ul class="sidebar-nav">
+            <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">📊 仪表盘</a></li>
+            <li><a href="/documents" class="{% if request.path == '/documents' %}active{% endif %}">📄 文档管理</a></li>
+            <li><a href="/query" class="{% if request.path == '/query' %}active{% endif %}">💬 RAG 问答</a></li>
+            <li><a href="/reports" class="{% if request.path == '/reports' %}active{% endif %}">📈 报告中心</a></li>
+        </ul>
+        <div class="sidebar-footer">
+            <span class="status-dot green"></span> 系统运行中
+        </div>
+    </nav>
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

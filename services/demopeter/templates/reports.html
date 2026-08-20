@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block title %}报告中心 - szpeter2026{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📈 报告中心</h1>
+    <p class="subtitle">生成和查看知识库分析报告</p>
+</div>
+
+<div class="card">
+    <div class="card-header"><h2>📊 生成报告</h2></div>
+    <div class="card-body">
+        <div class="report-actions">
+            <button class="btn btn-primary" onclick="generateReport('daily')">
+                <span class="btn-icon">📋</span> 生成日报
+            </button>
+            <button class="btn btn-secondary" onclick="generateReport('weekly')">
+                <span class="btn-icon">📈</span> 生成周报
+            </button>
+            <button class="btn btn-secondary" onclick="generateReport('monthly')">
+                <span class="btn-icon">📅</span> 生成月报
+            </button>
+        </div>
+        <div id="report-result"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>📜 最近查询记录</h2>
+        <button class="btn btn-sm" onclick="loadQueries()">🔄 刷新</button>
+    </div>
+    <div class="card-body">
+        <table class="data-table" id="queries-table">
+            <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>查询内容</th>
+                    <th>AI</th>
+                    <th>耗时</th>
+                    <th>参考块</th>
+                </tr>
+            </thead>
+            <tbody id="queries-tbody"></tbody>
+        </table>
+        <div id="queries-empty" class="empty-state" style="display:none;">
+            <p>📭 暂无查询记录</p>
+        </div>
+    </div>
+</div>
+
+<script>
+function generateReport(type) {
+    fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({type: type})
+    })
+    .then(r => r.json())
+    .then(data => {
+        document.getElementById('report-result').innerHTML = `
+            <div class="report-done">
+                ✅ ${data.type} 报告已生成
+                <br><code>${data.path}</code>
+            </div>`;
+    })
+    .catch(err => {
+        document.getElementById('report-result').innerHTML = `<div class="error">❌ ${err.message}</div>`;
+    });
+}
+
+function loadQueries() {
+    fetch('/api/reports/queries?limit=50')
+    .then(r => r.json())
+    .then(queries => {
+        document.getElementById('queries-tbody').innerHTML = queries.map(q => `
+            <tr>
+                <td>${(q.created_at || '').replace('T', ' ').slice(0, 19)}</td>
+                <td>${escapeHtml(q.query_text || '').slice(0, 80)}</td>
+                <td><span class="badge">${q.provider}</span></td>
+                <td>${(q.response_time_ms || 0).toFixed(0)}ms</td>
+                <td>${q.chunk_count || 0}</td>
+            </tr>
+        `).join('');
+        document.getElementById('queries-empty').style.display = queries.length ? 'none' : 'block';
+    });
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+
+loadQueries();
+</script>
+{% endblock %}

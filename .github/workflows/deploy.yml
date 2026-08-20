@@ -1,0 +1,43 @@
+name: Deploy
+
+# 触发方式：
+#   1. 手动：Actions → Deploy → Run workflow
+#   2. 打 tag：git tag v1.0.0 && git push origin v1.0.0
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload compose stack to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: "docker-compose.yml,services/ethos,services/tenet,services/tatha,services/demopeter,services/agentmemory,deploy/*"
+          target: "/opt/gfcc"
+
+      - name: Pull images and start stack
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd /opt/gfcc
+            if [ ! -f .env ]; then cp .env.example .env; fi
+            # 如需远端构建（不预推送镜像）：去掉下行注释
+            # docker compose up -d --build --remove-orphans
+            docker compose pull || true
+            docker compose up -d --remove-orphans
+            docker compose ps
+            curl -sf http://localhost:5210/v1/region || echo "WARN: tatha not ready yet"

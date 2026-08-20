@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}RAG 问答 - szpeter2026{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>💬 RAG 智能问答</h1>
+    <p class="subtitle">基于知识库的检索增强生成 | AI: {{ ai_provider }}</p>
+</div>
+
+{% if not ai_configured %}
+<div class="card" style="margin-bottom:1rem;border-left:4px solid #f0ad4e;background:#fff8e6;">
+    <div class="card-body">
+        <strong>⚠️ 检索模式</strong> — AI 生成未启用。当前仅展示知识库检索结果。
+        <div style="margin-top:0.5rem;font-size:0.9rem;color:#666;">{{ ai_hint }}</div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card chat-container">
+    <div class="card-body">
+        <div class="chat-messages" id="chat-messages">
+            <div class="chat-welcome">
+                <h2>🧠 你好！我是 szpeter2026 知识库助手</h2>
+                <p>我可以基于你导入的知识库文档回答问题。试试问我一些关于你文档内容的问题吧！</p>
+                <div class="quick-prompts">
+                    <button class="prompt-btn" onclick="askPrompt('请总结知识库的主要内容')">📝 总结知识库</button>
+                    <button class="prompt-btn" onclick="askPrompt('知识库中有哪些关键概念？')">🔑 关键概念</button>
+                    <button class="prompt-btn" onclick="askPrompt('请介绍一下文档的整体结构')">📂 文档结构</button>
+                </div>
+            </div>
+        </div>
+        <div class="chat-input">
+            <textarea id="chat-input" rows="2" placeholder="输入你的问题..." onkeydown="handleChatKey(event)"></textarea>
+            <button class="btn btn-primary" onclick="sendQuery()">🚀 发送</button>
+        </div>
+        <div class="chat-options">
+            <label>Top-K: <input type="number" id="top-k" value="5" min="1" max="20" style="width:70px"></label>
+            <label title="混合检索下为向量/关键词匹配度，非 RRF 内部小分">相似度阈值:
+                <input type="number" id="threshold" value="0.35" min="0" max="1" step="0.05" style="width:70px">
+            </label>
+            <label><input type="checkbox" id="stream-mode" checked> 流式输出</label>
+        </div>
+    </div>
+</div>
+
+<script>
+let isProcessing = false;
+
+function handleChatKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendQuery();
+    }
+}
+
+function askPrompt(text) {
+    document.getElementById('chat-input').value = text;
+    sendQuery();
+}
+
+function sendQuery() {
+    if (isProcessing) return;
+    const input = document.getElementById('chat-input');
+    const query = input.value.trim();
+    if (!query) return;
+
+    isProcessing = true;
+    input.value = '';
+
+    const messagesDiv = document.getElementById('chat-messages');
+    const isStream = document.getElementById('stream-mode').checked;
+
+    // 移除欢迎消息
+    const welcome = messagesDiv.querySelector('.chat-welcome');
+    if (welcome) welcome.remove();
+
+    // 添加用户消息
+    messagesDiv.innerHTML += `<div class="chat-msg chat-user"><div class="msg-content">${escapeHtml(query)}</div></div>`;
+
+    // 添加 AI 占位
+    const aiMsg = document.createElement('div');
+    aiMsg.className = 'chat-msg chat-ai';
+    aiMsg.innerHTML = '<div class="msg-content"><span class="typing">⏳ 思考中...</span></div>';
+    messagesDiv.appendChild(aiMsg);
+    messagesDiv.scrollTop = messagesDiv.scrollHeight;
+
+    const topK = document.getElementById('top-k').value;
+    const threshold = document.getElementById('threshold').value;
+
+    if (isStream) {
+        streamQuery(query, aiMsg, topK, threshold);
+    } else {
+        normalQuery(query, aiMsg, topK, threshold);
+    }
+}
+
+function formatSources(sources) {
+    if (!sources || !sources.length) return '';
+    return '<div class="msg-sources"><strong>参考来源：</strong>' +
+        sources.map(s => {
+            const pct = (s.similarity * 100).toFixed(0);
+            const warn = s.below_threshold ? ' ⚠️' : '';
+            return `<span class="source-tag">${escapeHtml(s.source)} (${pct}%)${warn}</span>`;
+        }).join('') +
+        '</div>';
+}
+
+function formatAnswer(text) {
+    return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function normalQuery(query, aiMsg, topK, threshold) {
+    fetch('/api/rag/query', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query, top_k: parseInt(topK), threshold: parseFloat(threshold)})
+    })
+    .then(r => r.json().then(data => ({ok: r.ok, data})))
+    .then(({ok, data}) => {
+        const contentDiv = aiMsg.querySelector('.msg-content');
+        if (!ok) {
+            contentDiv.innerHTML = `❌ ${escapeHtml(data.error || '请求失败')}`;
+            isProcessing = false;
+            return;
+        }
+        let html = formatAnswer(data.answer);
+        html += `<div class="msg-meta">⏱ ${data.response_time_ms.toFixed(0)}ms | 📚 ${data.chunk_count} 块参考</div>`;
+        if (data.sources.length && !data.retrieval_only) {
+            html += formatSources(data.sources);
+        }
+        contentDiv.innerHTML = html;
+        isProcessing = false;
+        document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    })
+    .catch(err => {
+        aiMsg.querySelector('.msg-content').innerHTML = `❌ 错误: ${err.message}`;
+        isProcessing = false;
+    });
+}
+
+function streamQuery(query, aiMsg, topK, threshold) {
+    const params = new URLSearchParams({query, top_k: topK, threshold});
+    const eventSource = new EventSource('/api/rag/stream?' + params.toString());
+    let answerText = '';
+    let sourcesHtml = '';
+    let hasContent = false;
+
+    function renderContent() {
+        aiMsg.querySelector('.msg-content').innerHTML =
+            sourcesHtml + formatAnswer(answerText);
+    }
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        if (data.type === 'sources') {
+            sourcesHtml = formatSources(data.data);
+            hasContent = true;
+            renderContent();
+        } else if (data.type === 'meta') {
+            hasContent = true;
+        } else if (data.type === 'error') {
+            aiMsg.querySelector('.msg-content').innerHTML =
+                `❌ ${escapeHtml(data.message)}`;
+            eventSource.close();
+            isProcessing = false;
+        } else if (data.type === 'text') {
+            answerText += data.content;
+            hasContent = true;
+            renderContent();
+        } else if (data.type === 'done') {
+            aiMsg.querySelector('.msg-content').innerHTML +=
+                `<div class="msg-meta">⏱ ${data.time_ms.toFixed(0)}ms</div>`;
+            eventSource.close();
+            isProcessing = false;
+        }
+        document.getElementById('chat-messages').scrollTop = document.getElementById('chat-messages').scrollHeight;
+    };
+
+    eventSource.onerror = function() {
+        if (!hasContent) {
+            aiMsg.querySelector('.msg-content').innerHTML =
+                '❌ 流式连接中断，请检查服务日志或改用非流式模式';
+        }
+        eventSource.close();
+        isProcessing = false;
+    };
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text || '';
+    return div.innerHTML;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+# gfcc agentmemory 认证网关（ethos 前置，黑盒引擎唯一入口）
+# 构建（在仓库根执行）：
+#   docker build -f services/agentmemory/Dockerfile.gateway -t gfcc/am-gateway .
+#
+# 转发规则见 gateway.py：GET→引擎 :3111、POST/PUT/DELETE→桥 :3220、SSE→:3112
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# ethos 安全底座（monorepo 共享内核）
+COPY services/ethos /ethos
+RUN pip install --no-cache-dir -q fastapi 'uvicorn[standard]' httpx \
+    && pip install --no-cache-dir -q -e /ethos
+
+COPY services/agentmemory/gateway.py /app/gateway.py
+
+EXPOSE 3210
+
+CMD ["uvicorn", "gateway:app", "--host", "0.0.0.0", "--port", "3210"]

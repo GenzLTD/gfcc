@@ -1,0 +1,14 @@
+{
+  "$schema": "https://example.invalid/ethos-resources.schema.json",
+  "comment": "ethos.resolver 资源配置示例。路径用 ${VAR} 引用环境变量，跨平台统一。",
+
+  "poetry_corpus": "${POETRY_ROOT:-./corpus}/chinese-poetry",
+  "chroma_index": "${WORKSPACE:-./data}/chroma",
+  "audit_log_dir": "~/logs/ethos",
+
+  "services": {
+    "auth": "http://127.0.0.1:8207",
+    "knowledge_api": "http://127.0.0.1:8000",
+    "rag": "http://127.0.0.1:8001"
+  }
+}

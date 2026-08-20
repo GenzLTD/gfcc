@@ -1,0 +1,17 @@
+# 构建上下文精简与安全
+.git
+.github
+.setup
+.env
+.env.*
+**/__pycache__
+**/*.pyc
+**/node_modules
+db
+data
+logs
+chroma
+.chroma-cache
+*.log
+docs
+README.md

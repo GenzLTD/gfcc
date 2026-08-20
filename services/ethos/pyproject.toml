@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ethos"
+version = "0.1.0"
+description = "跨平台共享 AI 管道内核：纯验证者认证 + 库内配额 + 本地审计，resolver 服务/资源定位"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = []
+
+[project.optional-dependencies]
+consul = ["httpx>=0.27"]
+remote-quota = ["httpx>=0.27"]
+dev = ["pytest>=8"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+ethos = ["py.typed"]
