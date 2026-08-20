@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Community Role Ladder v1",
+  "version": "1.0.0",
+  "description": "Eight-step growth ladder carried in ethos Principal.roles / permissions. Not eight microservices. Admin flag is an ops exception, not the long-term promotion mechanism.",
+  "home": "ethos JWT claims",
+  "role_enum": [
+    "observer",
+    "participant",
+    "experimenter",
+    "proposer",
+    "steward",
+    "organizer",
+    "actor",
+    "petitioner"
+  ],
+  "ladder": [
+    {
+      "id": "observer",
+      "zh": "旁观",
+      "permissions": ["identity.read", "memory.read", "consensus.read"]
+    },
+    {
+      "id": "participant",
+      "zh": "参与",
+      "includes": "observer",
+      "permissions": ["identity.write", "memory.write", "consensus.ack", "contribution.attest", "contribution.appeal"]
+    },
+    {
+      "id": "experimenter",
+      "zh": "尝试",
+      "includes": "participant",
+      "permissions": ["memory.observe"]
+    },
+    {
+      "id": "proposer",
+      "zh": "提议",
+      "includes": "experimenter",
+      "permissions": ["consensus.propose"]
+    },
+    {
+      "id": "steward",
+      "zh": "主理",
+      "includes": "proposer",
+      "permissions": ["memory.write", "contribution.fulfill"]
+    },
+    {
+      "id": "organizer",
+      "zh": "组织",
+      "includes": "steward",
+      "permissions": ["contribution.appeal.resolve"]
+    },
+    {
+      "id": "actor",
+      "zh": "行动",
+      "includes": "organizer",
+      "permissions": []
+    },
+    {
+      "id": "petitioner",
+      "zh": "提案",
+      "includes": "actor",
+      "permissions": []
+    }
+  ],
+  "transitions": {
+    "driven_by": ["memory records", "contribution fulfillments", "consensus_verified"],
+    "not_driven_by_long_term": ["admin toggle only"],
+    "ops_exception": "admin/system may set roles for repair; must audit as admin.role.set"
+  },
+  "deny_by_default": true,
+  "scope_unlisted": "reject"
+}

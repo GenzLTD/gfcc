@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Consensus Port v1",
+  "version": "1.0.0",
+  "port": "consensus",
+  "description": "Deliberation for 格契. Success is threshold AND bidirectional acknowledge. Having a scored result is not success. Failure must not auto-complete.",
+  "not": [
+    "job matching",
+    "dating match",
+    "single-click confirm after a scan"
+  ],
+  "threshold": {
+    "name": "CONSENSUS_THRESHOLD",
+    "default": 85,
+    "minimum": 0,
+    "maximum": 100,
+    "overridable": true
+  },
+  "status_enum": [
+    "proposed",
+    "scored",
+    "below_threshold",
+    "consensus_passed",
+    "awaiting_ack",
+    "consensus_verified",
+    "expired",
+    "failed"
+  ],
+  "proposal": {
+    "type": "object",
+    "required": ["circle_id", "subject", "parties"],
+    "properties": {
+      "id": { "type": "string" },
+      "circle_id": { "type": "string" },
+      "subject": { "type": "string" },
+      "issue_id": { "type": ["string", "null"], "description": "Optional Dual memory.issue id" },
+      "parties": {
+        "type": "array",
+        "minItems": 2,
+        "items": { "type": "string", "description": "Principal.sub" }
+      },
+      "score": { "type": ["number", "null"] },
+      "status": { "enum": ["proposed", "scored", "below_threshold", "consensus_passed", "awaiting_ack", "consensus_verified", "expired", "failed"] },
+      "acks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["sub", "at"],
+          "properties": {
+            "sub": { "type": "string" },
+            "at": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  },
+  "operations": {
+    "propose": { "scope": "consensus.propose", "min_role": "proposer" },
+    "score": { "scope": "consensus.score", "min_role": "system" },
+    "acknowledge": {
+      "scope": "consensus.ack",
+      "min_role": "participant",
+      "notes": "Each party must ack. Partial ack stays awaiting_ack."
+    },
+    "get_status": { "scope": "consensus.read", "min_role": "observer" }
+  },
+  "invariants": [
+    "score < threshold → below_threshold; can_complete = false",
+    "score >= threshold → consensus_passed, then awaiting_ack; still can_complete = false",
+    "all parties acked → consensus_verified; only then can_complete = true",
+    "expired or failed never promote to verified",
+    "Ask result with matches/candidates must include consensus_status; UI must not treat list-as-success"
+  ],
+  "can_complete_mission": {
+    "true_only_when": "status == consensus_verified",
+    "false_otherwise": true
+  }
+}

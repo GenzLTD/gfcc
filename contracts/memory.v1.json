@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Memory Port v1 (Dual seven libraries)",
+  "version": "1.0.0",
+  "port": "memory",
+  "description": "Community memory semantics. The store slot is replaceable (stub, sqlite, Mem0, Zep, agentmemory/iii). Semantics stay Dual seven-library, not personal notepad.",
+  "not": [
+    "a personal fact dump",
+    "a binding to DemoPeter or iii-engine",
+    "silent overwrite of prior state"
+  ],
+  "libraries": {
+    "issue": "议题",
+    "action": "行动",
+    "event": "事件",
+    "method": "方法",
+    "person": "人",
+    "org": "组织",
+    "resource": "资源"
+  },
+  "library_enum": [
+    "issue",
+    "action",
+    "event",
+    "method",
+    "person",
+    "org",
+    "resource"
+  ],
+  "record": {
+    "type": "object",
+    "required": ["library", "body", "observed_at"],
+    "properties": {
+      "id": { "type": "string" },
+      "library": { "enum": ["issue", "action", "event", "method", "person", "org", "resource"] },
+      "circle_id": { "type": "string" },
+      "body": { "type": "string", "minLength": 1 },
+      "refs": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Ids of related seven-library records"
+      },
+      "observed_at": { "type": "string", "format": "date-time" },
+      "superseded_at": { "type": ["string", "null"], "format": "date-time" },
+      "actor_sub": { "type": "string" }
+    }
+  },
+  "operations": {
+    "remember": {
+      "scope": "memory.write",
+      "min_role": "participant",
+      "invariants": [
+        "Must name a library",
+        "Must set observed_at",
+        "Must not delete history; supersede instead"
+      ]
+    },
+    "recall": {
+      "scope": "memory.read",
+      "min_role": "observer"
+    },
+    "observe": {
+      "scope": "memory.observe",
+      "min_role": "experimenter",
+      "description": "Mark a record as seen/used without mutating body"
+    },
+    "supersede": {
+      "scope": "memory.write",
+      "min_role": "steward",
+      "description": "Prior record keeps body; superseded_at is set. Old state is history."
+    }
+  },
+  "store_slot": {
+    "interface": "ctx.store",
+    "required_methods": ["put", "get", "query", "supersede"],
+    "default_adapter": "stub",
+    "optional_adapters": ["sqlite", "mem0", "zep", "agentmemory_iii"]
+  },
+  "empty_on_boot": true
+}

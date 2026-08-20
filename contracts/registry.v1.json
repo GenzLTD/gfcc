@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Port Registry v1",
+  "version": "1.0.0",
+  "description": "Kernel dispatch depends on these interfaces only. Named services below the default line are optional adapters, unloadable via mode.",
+  "kernel": {
+    "entry": "POST /v1/ask",
+    "verifier": "ethos",
+    "slots": ["llm", "tools", "session", "policy", "store"]
+  },
+  "default_mode": "gfcc.default",
+  "ports": {
+    "identity": {
+      "contract": "identity.v1.json",
+      "default_adapter": "stub",
+      "required_in_default_mode": true
+    },
+    "memory": {
+      "contract": "memory.v1.json",
+      "default_adapter": "stub",
+      "required_in_default_mode": true,
+      "store_adapters": {
+        "default": "stub",
+        "optional": ["sqlite", "mem0", "zep", "agentmemory_iii"]
+      }
+    },
+    "consensus": {
+      "contract": "consensus.v1.json",
+      "default_adapter": "stub",
+      "required_in_default_mode": true
+    },
+    "contribution": {
+      "contract": "contribution.v1.json",
+      "default_adapter": "stub",
+      "required_in_default_mode": true
+    }
+  },
+  "optional_adapters": {
+    "knowledge.demopeter": {
+      "mode": "profile.demo",
+      "notes": "RAG sample. Not a 格契 first-class port."
+    },
+    "memory.agentmemory_iii": {
+      "mode": "profile.demo",
+      "notes": "Third-party memory engine behind ctx.store. Unloadable."
+    },
+    "job_match": { "mode": "profile.demo", "may_feed": "identity.capability_trace" },
+    "poetry": { "mode": "profile.demo" },
+    "credit": { "mode": "profile.demo", "notes": "Must not be a consensus surface." },
+    "mbti": { "mode": "profile.demo", "may_feed": "identity.values" }
+  },
+  "forbidden_in_default_tools": [
+    "demopeter",
+    "agentmemory",
+    "iii",
+    "job_match",
+    "poetry",
+    "credit",
+    "mbti"
+  ]
+}

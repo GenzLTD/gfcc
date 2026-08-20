@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Identity Port v1 (PPI)",
+  "version": "1.0.0",
+  "port": "identity",
+  "description": "Personal-public identity for 格契. Values, capability trace, and commitments grow with contribution. uid is ethos Principal.sub. Paid tier is quota only.",
+  "not": [
+    "a billing plan",
+    "a resume inbox",
+    "an MBTI product surface"
+  ],
+  "principal": {
+    "uid": "sub",
+    "roles": "see roles.v1.json (growth ladder in JWT claims)",
+    "tier": "ethos free|basic|pro|admin — quota/bypass only"
+  },
+  "profile": {
+    "type": "object",
+    "required": ["sub"],
+    "properties": {
+      "sub": { "type": "string", "minLength": 1 },
+      "display_name": { "type": "string" },
+      "values": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Declared values; not a match score by itself"
+      },
+      "capability_trace": {
+        "type": "array",
+        "description": "Evidence-backed skills/actions over time",
+        "items": {
+          "type": "object",
+          "required": ["label", "observed_at"],
+          "properties": {
+            "label": { "type": "string" },
+            "source_port": {
+              "type": "string",
+              "enum": ["contribution", "memory", "consensus", "optional"]
+            },
+            "observed_at": { "type": "string", "format": "date-time" },
+            "superseded_at": { "type": ["string", "null"], "format": "date-time" }
+          }
+        }
+      },
+      "commitments": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": ["text", "status"],
+          "properties": {
+            "id": { "type": "string" },
+            "text": { "type": "string" },
+            "status": {
+              "type": "string",
+              "enum": ["offered", "accepted", "fulfilled", "withdrawn"]
+            }
+          }
+        }
+      },
+      "role": { "$ref": "roles.v1.json#/role_enum" },
+      "role_evidence_ids": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Dual / CoCo record ids that justify the current ladder step"
+      }
+    }
+  },
+  "operations": {
+    "get_profile": {
+      "scope": "identity.read",
+      "min_role": "observer"
+    },
+    "upsert_profile": {
+      "scope": "identity.write",
+      "min_role": "participant",
+      "notes": "Self-write of values/commitments. Role changes go through roles.v1 transitions."
+    },
+    "append_trace": {
+      "scope": "identity.trace.write",
+      "min_role": "system",
+      "notes": "Only contribution/consensus adapters append traces. Humans do not self-mint capability."
+    }
+  },
+  "optional_plugins": {
+    "career_trace": "JobFirst resume/job_match may feed capability_trace; they are not identity itself",
+    "personality": "MBTI-like input may annotate values; not an entry port"
+  }
+}

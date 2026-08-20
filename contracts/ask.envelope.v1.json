@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GFCC Ask Envelope v1",
+  "version": "1.0.0",
+  "description": "Single entry for 格契. Internals are replaceable; this envelope is not. dispatch binds to port interfaces in registry.v1, never to a named vendor service.",
+  "entry": "POST /v1/ask",
+  "health": "GET /health",
+  "auth": {
+    "verifier": "ethos",
+    "uid_claim": "sub",
+    "deny_by_default": true,
+    "http": { "unauthenticated": 401, "forbidden": 403, "quota_exceeded": 429 }
+  },
+  "slots": ["llm", "tools", "session", "policy", "store"],
+  "default_ports": ["identity", "memory", "consensus", "contribution"],
+  "deprecated_aliases": {
+    "intent": "port"
+  },
+  "request": {
+    "type": "object",
+    "required": ["message"],
+    "additionalProperties": false,
+    "properties": {
+      "message": {
+        "type": "string",
+        "minLength": 1,
+        "description": "What the member wants. Caller does not pick a backend path."
+      },
+      "context": {
+        "type": "object",
+        "additionalProperties": true,
+        "properties": {
+          "session_id": { "type": "string" },
+          "circle_id": { "type": "string", "description": "围坐 / 共同体标识" },
+          "port_hint": {
+            "type": "string",
+            "enum": ["identity", "memory", "consensus", "contribution", "unknown"]
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "type": "object",
+    "required": ["port", "status", "result"],
+    "properties": {
+      "port": {
+        "type": "string",
+        "description": "Resolved first-class port or unknown. Not a JobFirst intent name."
+      },
+      "status": {
+        "type": "string",
+        "enum": ["ok", "pending", "denied", "error", "unknown"]
+      },
+      "result": { "type": "object" },
+      "suggestions": {
+        "type": "array",
+        "items": { "type": "string" }
+      },
+      "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+    }
+  },
+  "parse_then_dispatch": {
+    "parse": "message + context → { port, confidence, slots }",
+    "dispatch": "port → tools registry adapter; adapter talks to store/policy via slots",
+    "invariant": "Adding a capability = register adapter + mode list. Do not grow a JobFirst intent table as the spine."
+  }
+}

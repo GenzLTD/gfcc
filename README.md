@@ -1,5 +1,8 @@
 # gfcc — 智能体体系交付栈
 
+**契约真源（先于实现）**：[格契端口真源提纲](docs/ports/README.md) · [`contracts/`](contracts/) · [`modes/`](modes/)  
+默认组合是内核 + identity / memory / consensus / contribution。DemoPeter、agentmemory/iii、JobFirst 意图是可选画像，不是脊柱。
+
 **中央大脑 + 统一安全底座 + 可调度知识服务** 的单仓库（monorepo）交付形态。
 
 ```

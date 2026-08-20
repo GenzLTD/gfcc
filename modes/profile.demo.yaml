@@ -1,0 +1,12 @@
+# 可选画像：现仓 JobFirst / DemoPeter / iii 接入样例。
+# 可卸载。卸掉后 gfcc.default 仍应能启动。
+id: profile.demo
+extends: gfcc.default
+slots:
+  store: agentmemory_iii   # optional; not the memory port itself
+  tools_extra:
+    - knowledge.demopeter
+    - job_match
+    - poetry
+    - credit
+    - mbti

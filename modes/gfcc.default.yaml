@@ -1,0 +1,13 @@
+# 格契默认组合 = 内核 + 四个一等端口。
+# 模式是插件清单，不是新 URL。stub 合法；空数据合法。
+id: gfcc.default
+slots:
+  llm: providers/default
+  policy: ethos
+  session: community
+  store: stub
+  tools:
+    - identity
+    - memory
+    - consensus
+    - contribution
