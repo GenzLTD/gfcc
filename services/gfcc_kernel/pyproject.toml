@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gfcc-kernel"
+version = "1.1.0"
+description = "格契内核：POST /v1/ask 单入口 + 五槽（llm/tools/session/policy/store）+ 五个一等端口（circle/identity/memory/consensus/contribution）默认 stub 组合"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn[standard]>=0.20.0",
+    "pydantic>=2.0",
+    "python-dotenv>=1.0.0",
+    "pyyaml>=6.0",
+    # Ethos - 纯验证者（验签/鉴权/配额/审计），dev 期同级目录 editable 安装
+    "ethos>=0.1.0",
+]
+
+# uv：ethos 指向同级本地包
+[tool.uv.sources]
+ethos = { path = "../ethos" }
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "httpx>=0.24.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
