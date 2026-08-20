@@ -1,0 +1,5 @@
+# 部署脚本必须保持 LF（Linux 目标机）
+deploy/*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
