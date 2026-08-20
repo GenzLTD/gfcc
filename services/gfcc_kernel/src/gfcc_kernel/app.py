@@ -20,7 +20,7 @@ from .dispatcher import parse_then_dispatch
 from .envelope import AskRequest, AskResponse
 from .registry import PortRegistry
 from .security import KernelPolicy, build_security
-from .slots import LLMProvider
+from .slots import OllamaLLM, SQLiteStore, build_llm, build_store
 
 load_dotenv()
 
@@ -36,17 +36,27 @@ app = FastAPI(
 # 装配（模块级单例）
 # --------------------------------------------------------------------------- #
 
-_registry = PortRegistry(threshold=int(os.getenv("CONSENSUS_THRESHOLD", "85")))
+_store = build_store()
+_registry = PortRegistry(
+    threshold=int(os.getenv("CONSENSUS_THRESHOLD", "85")),
+    store=_store,
+)
 _security = build_security()
 _policy = KernelPolicy(_security)
-_llm = LLMProvider(model=os.getenv("LLM_MODEL", "providers/default"), endpoint=os.getenv("LLM_ENDPOINT") or None)
+_llm = build_llm()
+
+_store_provider = "sqlite" if isinstance(_store, SQLiteStore) else "stub"
+_llm_provider = "ollama" if isinstance(_llm, OllamaLLM) else "stub"
 
 
 @app.on_event("startup")
 async def _startup() -> None:
     logger.info(
-        "gfcc_kernel ready: ports=%s store=stub empty_on_boot=true",
+        "gfcc_kernel ready: ports=%s store=%s llm=%s empty_on_boot=%s",
         _registry.list_ports(),
+        _store_provider,
+        _llm_provider,
+        _store_provider == "stub",
     )
 
 
@@ -62,8 +72,9 @@ async def health() -> Dict[str, Any]:
         "version": "1.1.0",
         "ports": _registry.list_ports(),
         "mode": "gfcc.default",
-        "store": "stub",
-        "empty_on_boot": True,
+        "store": _store_provider,
+        "llm": _llm_provider,
+        "empty_on_boot": _store_provider == "stub",
     }
 
 

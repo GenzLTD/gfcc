@@ -29,12 +29,37 @@ PORT_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def parse_port(message: str, port_hint: Optional[str] = None) -> Tuple[str, float]:
-    """解析 message → (port, confidence)。port_hint 优先。"""
+def parse_port(message: str, ctx: Optional[KernelContext] = None,
+               port_hint: Optional[str] = None) -> Tuple[str, float]:
+    """解析 message → (port, confidence)。
+
+    优先级：port_hint → llm 槽（语义分类）→ 关键词规则兜底。
+    llm 槽不可用或调用失败时，一律 fallback 到关键词规则（不删，是 CI 基准）。
+    """
     if port_hint and port_hint in FIRST_CLASS_PORTS:
         return port_hint, 1.0
     if port_hint == "unknown":
         return "unknown", 0.0
+
+    llm = getattr(ctx, "llm", None) if ctx is not None else None
+    if llm is not None and llm.is_available():
+        try:
+            result = llm.complete([{"role": "user", "content": message}])
+            port = str(result.get("port", "unknown")).strip().lower()
+            try:
+                confidence = float(result.get("confidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            if port in FIRST_CLASS_PORTS or port == "unknown":
+                return port, min(1.0, max(0.0, confidence))
+        except Exception:  # noqa: BLE001
+            pass  # fallback to keywords
+
+    return _parse_port_keywords(message)
+
+
+def _parse_port_keywords(message: str) -> Tuple[str, float]:
+    """关键词规则解析（stub 兜底，也是 CI 测试基准）。"""
     text = message.lower()
     best_port, best_score = "unknown", 0.0
     for port, keywords in PORT_KEYWORDS.items():
@@ -188,7 +213,7 @@ def _infer_keyword(msg: str) -> Optional[str]:
 
 def parse_then_dispatch(request: AskRequest, ctx: KernelContext) -> AskResponse:
     """解析 → 分发 → 组装信封响应。"""
-    port, confidence = parse_port(request.message, request.context.port_hint)
+    port, confidence = parse_port(request.message, ctx, request.context.port_hint)
 
     if port == "unknown" or confidence == 0.0:
         return AskResponse(

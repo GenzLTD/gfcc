@@ -41,8 +41,8 @@ class KernelContext:
 class PortRegistry:
     """注册表：端口名 → 适配器。加能力 = 注册适配器，不增长 intent 表。"""
 
-    def __init__(self, threshold: int = 85) -> None:
-        self._store = StubStore()
+    def __init__(self, threshold: int = 85, store: Optional[Any] = None) -> None:
+        self._store = store or StubStore()
         self._session = SessionStore()
         self._circle = CircleAdapter()
         self._identity = IdentityAdapter()

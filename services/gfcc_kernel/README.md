@@ -46,6 +46,41 @@ curl -X POST http://localhost:5211/v1/ask \
 - 配置后 → `HmacJwtVerifier`（HS256 严格模式），系统令牌跨服务互通。
 - 审计：`ETHOS_AUDIT_DB` / `ETHOS_AUDIT_JSONL` 可选。
 
+## 槽位实现（Step 1-2，对齐 docs/Phase2_Step1-2_实施建议.md）
+
+### llm 槽：规则解析 → Ollama 语义分类（可选）
+
+- `LLM_PROVIDER=stub`（默认）→ 规则解析 + stub llm，`/health` 显示 `llm=stub`。
+- `LLM_PROVIDER=ollama` + `OLLAMA_BASE_URL` + `OLLAMA_MODEL` → `OllamaLLM`
+  （`POST /api/chat`，`format=json` 强制结构化输出）。
+- 解析优先级：`port_hint` → llm 槽 → 关键词规则兜底。**Ollama 离线/失败自动 fallback
+  到关键词规则**，规则表不删除（CI 基准）。
+
+```bash
+# 前提：Ollama 已启动并 pull 模型
+ollama pull qwen2.5:7b
+# .env 里启用
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=qwen2.5:7b
+```
+
+### store 槽：内存 dict → SQLite 持久化（可选）
+
+- `STORE_PROVIDER=stub`（默认）→ `StubStore` 内存（重启即空）。
+- `STORE_PROVIDER=sqlite` → `SQLiteStore`，db 在 `STORE_DB_PATH`（默认 `data/memory.db`，
+  与 `logs/audit.db` 同级，`data/` 已被 .gitignore 忽略）。重启不丢数据。
+- 接口对齐 `memory.v1.json` store_slot：`put / get / query / supersede / count`。
+- 契约红线：`supersede(observed_by="ai")` 直接拒绝（AI 只能 observe，不能静默改写）。
+
+```bash
+# .env 里启用
+STORE_PROVIDER=sqlite
+STORE_DB_PATH=data/memory.db
+```
+
+`/health` 会如实返回 `store=stub|sqlite` 与 `llm=stub|ollama`，便于确认当前装配。
+
 ## 设计约束
 
 - 信封不可变；内部实现可替换。
