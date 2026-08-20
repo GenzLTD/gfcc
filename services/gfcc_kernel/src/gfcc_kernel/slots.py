@@ -214,13 +214,18 @@ class StubStore:
 
     def query(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None, limit: int = 50) -> List[Dict[str, Any]]:
         with self._lock:
-            items = list(self._records.values())
+            items = [r for r in self._records.values() if not r.get("superseded_at")]
         if filter_fn:
             items = [dict(r) for r in items if filter_fn(r)]
         return items[:limit]
 
     def supersede(self, rid: str, new_body: Dict[str, Any], actor_sub: str, observed_by: str = "human") -> Optional[Dict[str, Any]]:
-        """旧记录保留 superseded_at；AI 不可静默改写（observed_by=ai 需显式观察而非改写）。"""
+        """旧记录保留 superseded_at；AI 不可静默改写（observed_by=ai 需显式观察而非改写）。
+
+        契约红线：observed_by=ai 不得静默改写（与 SQLiteStore 一致强制）。
+        """
+        if observed_by == "ai":
+            raise ValueError("ai must not silently supersede; use observe instead")
         with self._lock:
             old = self._records.get(rid)
             if old is None:
@@ -236,8 +241,9 @@ class StubStore:
             return new_record
 
     def count(self) -> int:
+        """只统计活跃记录（superseded_at 为空），与 SQLiteStore 语义对齐。"""
         with self._lock:
-            return len(self._records)
+            return sum(1 for r in self._records.values() if not r.get("superseded_at"))
 
 
 # --------------------------------------------------------------------------- #

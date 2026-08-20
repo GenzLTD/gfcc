@@ -24,10 +24,50 @@ jobs:
           python -c "import sys; sys.path.insert(0, 'services/tatha/src'); import tatha.api.app; print('tatha OK')"
           python -c "import sys; sys.path.insert(0, 'services/agentmemory'); import gateway; print('gateway OK')"
 
+  # ---- 格契内核单元测试（信封严格性 / 端口解析 / store 槽红线 / consensus 状态机） ----
+  test-kernel:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # 注意：kernel 的 ethos 依赖是本地路径包（../ethos），必须与 ethos 一起 editable 安装
+      - name: Install kernel (+ local ethos dependency)
+        run: pip install -e services/ethos -e services/gfcc_kernel pytest httpx
+      - name: Run kernel tests
+        run: pytest -q services/gfcc_kernel/tests
+
+  # ---- 契约校验（contracts/*.json 合法性 + 版本号一致，防 G1 冻结后字段漂移） ----
+  test-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate contracts
+        run: |
+          python - <<'EOF'
+          import json, glob, sys
+          files = sorted(glob.glob("contracts/*.json"))
+          assert files, "no contracts found"
+          versions = set()
+          for f in files:
+              d = json.load(open(f, encoding="utf-8"))
+              v = d.get("version")
+              assert v, f"{f}: missing version"
+              versions.add(v)
+              print(f"OK {f} version={v}")
+          assert len(versions) == 1, f"version drift: {versions}"
+          print(f"all {len(files)} contracts at {versions.pop()}")
+          EOF
+
+
   # ---- 镜像构建 + 推送 GHCR（仅 main 分支） ----
   build-images:
     runs-on: ubuntu-latest
-    needs: test-libs
+    needs: [test-libs, test-kernel, test-contracts]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
