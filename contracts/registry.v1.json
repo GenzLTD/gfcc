@@ -1,15 +1,21 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GFCC Port Registry v1",
-  "version": "1.0.0",
-  "description": "Kernel dispatch depends on these interfaces only. Named services below the default line are optional adapters, unloadable via mode.",
+  "version": "1.1.0",
+  "description": "Kernel dispatch depends on these interfaces only. Named services below the default line are optional adapters, unloadable via mode. gfcc is the contract layer; Tatha is one implementation of POST /v1/ask.",
   "kernel": {
     "entry": "POST /v1/ask",
     "verifier": "ethos",
-    "slots": ["llm", "tools", "session", "policy", "store"]
+    "slots": ["llm", "tools", "session", "policy", "store"],
+    "implementation_example": "tatha"
   },
   "default_mode": "gfcc.default",
   "ports": {
+    "circle": {
+      "contract": "circle.v1.json",
+      "default_adapter": "stub",
+      "required_in_default_mode": true
+    },
     "identity": {
       "contract": "identity.v1.json",
       "default_adapter": "stub",
@@ -38,16 +44,24 @@
   "optional_adapters": {
     "knowledge.demopeter": {
       "mode": "profile.demo",
-      "notes": "RAG sample. Not a 格契 first-class port."
+      "notes": "RAG sample. Not a 格契 first-class port. Insight/observe is memory.observe, not this adapter."
     },
     "memory.agentmemory_iii": {
       "mode": "profile.demo",
       "notes": "Third-party memory engine behind ctx.store. Unloadable."
     },
-    "job_match": { "mode": "profile.demo", "may_feed": "identity.capability_trace" },
+    "job_match": {
+      "mode": "profile.demo",
+      "may_feed": "identity.capability_trace",
+      "weight": "auxiliary"
+    },
     "poetry": { "mode": "profile.demo" },
     "credit": { "mode": "profile.demo", "notes": "Must not be a consensus surface." },
-    "mbti": { "mode": "profile.demo", "may_feed": "identity.values" }
+    "mbti": {
+      "mode": "profile.demo",
+      "may_feed": "identity.values",
+      "weight": "auxiliary"
+    }
   },
   "forbidden_in_default_tools": [
     "demopeter",

@@ -1,9 +1,19 @@
-# gfcc — 智能体体系交付栈
+# 格契（GFCC）
 
-**契约真源（先于实现）**：[格契端口真源提纲](docs/ports/README.md) · [`contracts/`](contracts/) · [`modes/`](modes/)  
-默认组合是内核 + identity / memory / consensus / contribution。DemoPeter、agentmemory/iii、JobFirst 意图是可选画像，不是脊柱。
+**格契**是社区共同体的牵引力层：把「记得住、协商得了、贡献兑得现」做成可交付的体系。方向盘在共同体手里（Tractor：你掌方向，我出力气）。
 
-**中央大脑 + 统一安全底座 + 可调度知识服务** 的单仓库（monorepo）交付形态。
+- **gfcc = 契约层（真源）**：[价值层](docs/vision.md) · [端口提纲](docs/ports/README.md) · [`contracts/`](contracts/)
+- **Tatha = 实现层**：当前仓里 `POST /v1/ask` 的一个实现，可替换；不是真源。
+- 默认组合：内核 + circle / identity / memory / consensus / contribution。DemoPeter、agentmemory/iii、JobFirst 是可选画像，可卸载。
+- v1 不依赖链；链是未来可选的一层，不是现在的承诺。
+
+版本：契约 **1.1.0** · [VERSIONING](docs/VERSIONING.md) · [CHANGELOG](docs/CHANGELOG.md)
+
+---
+
+# 当前实现画像（可卸载）
+
+下面这张图是仓库里正在跑的 Tatha + DemoPeter + iii 栈，对应 `modes/profile.demo.yaml`，**不是**格契默认脊柱。
 
 ```
 用户 / 上层助理
@@ -21,18 +31,22 @@
 
 ```
 gfcc/
-├── docker-compose.yml            # 单栈编排（6 服务）
-├── .env.example                  # 环境模板（复制为 .env）
+├── docs/vision.md                # L-1 价值层（为谁而生）
+├── docs/ports/README.md          # 端口真源提纲
+├── contracts/                    # L0 机器可读契约
+├── modes/                        # 默认组合 vs 演示画像
+├── docker-compose.yml            # 单栈编排（6 服务，偏 demo 画像）
+├── .env.example
 ├── services/
-│   ├── ethos/                    # 安全底座（认证/鉴权/配额/审计，零依赖库）
+│   ├── ethos/                    # 安全底座（认证/鉴权/配额/审计）
 │   ├── tenet/                    # 共享内核（Tatha 依赖）
-│   ├── tatha/                    # 中央大脑（单入口 /v1/ask）
-│   ├── demopeter/                # RAG 知识库（文档上传/检索/问答）
-│   └── agentmemory/              # 长期记忆（网关 + 桥 + 引擎配置）
-├── tools/import_memories.py      # 记忆体导入器（断点续传，走网关链路）
-├── deploy/deploy.sh              # 一键部署脚本
-├── docs/DEPLOY.md                # 部署手册
-└── .github/workflows/            # CI（构建推送镜像）+ Deploy（SSH 自动部署）
+│   ├── tatha/                    # Ask 信封的一个实现（可替换）
+│   ├── demopeter/                # RAG 样例（可卸载）
+│   └── agentmemory/              # 记忆引擎样例（可卸载）
+├── tools/import_memories.py
+├── deploy/deploy.sh
+├── docs/DEPLOY.md
+└── .github/workflows/
 ```
 
 ## 快速开始
@@ -55,7 +69,9 @@ curl -X POST http://localhost:5210/v1/ask \
      -d '{"text":"之前关于数据库配置的记忆"}'                       # 检索记忆
 ```
 
-## 对外能力面
+## 对外能力面（demo 画像，正在跑的 HTTP）
+
+契约层一等端口是 circle / identity / memory / consensus / contribution，见 [`contracts/registry.v1.json`](contracts/registry.v1.json)。下表是当前 Tatha 实现已暴露的入口，不等于默认脊柱。
 
 | 入口 | 能力 | 鉴权 |
 |---|---|---|
