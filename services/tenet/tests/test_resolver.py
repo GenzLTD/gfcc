@@ -88,17 +88,22 @@ def test_init_resolver_static():
 
 def test_load_resource_config_json(tmp_path):
     cfg = tmp_path / "resources.json"
+    poetry_paths = {
+        "win32": "E:/FiveBlessings/chinese-poetry",
+        "darwin": "/Users/me/FiveBlessings/chinese-poetry",
+        "linux": "/srv/FiveBlessings/chinese-poetry",
+    }
     cfg.write_text(
         '{"chinese-poetry": {"win32": "E:/FiveBlessings/chinese-poetry",'
-        ' "darwin": "/Users/me/FiveBlessings/chinese-poetry"},'
+        ' "darwin": "/Users/me/FiveBlessings/chinese-poetry",'
+        ' "linux": "/srv/FiveBlessings/chinese-poetry"},'
         ' "chroma": "${TATHA_ROOT}/.data/chroma/poetry_full"}',
         encoding="utf-8",
     )
     ctx = init_resolver(resources_path=cfg)
     loc = ctx["resource_locator"]
     cp = loc.resolve("chinese-poetry")
-    assert cp == Path("E:/FiveBlessings/chinese-poetry" if sys.platform == "win32"
-                      else "/Users/me/FiveBlessings/chinese-poetry")
+    assert cp == Path(poetry_paths[sys.platform])
     os.environ["TATHA_ROOT"] = "D:/proj/Tatha"
     try:
         assert loc.resolve("chroma") == Path("D:/proj/Tatha/.data/chroma/poetry_full")
@@ -110,13 +115,21 @@ def test_load_resource_config_toml(tmp_path):
     import pytest
 
     pytest.importorskip("tomllib")  # Python 3.11+；3.10 自动跳过
+    poetry_paths = {
+        "win32": "E:/Data/chinese-poetry",
+        "darwin": "/Users/me/Data/chinese-poetry",
+        "linux": "/srv/Data/chinese-poetry",
+    }
     cfg = tmp_path / "resources.toml"
     cfg.write_text(
-        '["chinese-poetry"]\nwin32 = "E:/Data/chinese-poetry"\n',
+        '["chinese-poetry"]\n'
+        'win32 = "E:/Data/chinese-poetry"\n'
+        'darwin = "/Users/me/Data/chinese-poetry"\n'
+        'linux = "/srv/Data/chinese-poetry"\n',
         encoding="utf-8",
     )
     ctx = init_resolver(resources_path=cfg)
-    assert ctx["resource_locator"].resolve("chinese-poetry") == Path("E:/Data/chinese-poetry")
+    assert ctx["resource_locator"].resolve("chinese-poetry") == Path(poetry_paths[sys.platform])
 
 
 def test_inline_resources_override_file(tmp_path):
