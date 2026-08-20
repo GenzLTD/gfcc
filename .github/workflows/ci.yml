@@ -15,7 +15,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install shared cores
-        run: pip install -e services/ethos -e services/tenet
+        run: pip install -e services/ethos -e services/tenet pytest
       - name: Run tests
         run: pytest -q services/ethos/tests services/tenet/tests
       - name: Import sanity (tatha / gateway)
