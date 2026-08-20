@@ -1,0 +1,15 @@
+# DemoPeter (gfcc RAG 知识库) 运行依赖
+# 构建：docker build -f services/demopeter/Dockerfile（在仓库根执行）
+# ethos 为 monorepo 共享安全底座，Dockerfile 已 COPY 到 /ethos，此处 editable 引用 ../ethos
+-e ../ethos
+
+flask>=3.0
+flask-cors>=4.0
+werkzeug>=3.0
+python-dotenv>=1.0
+chromadb>=0.5
+httpx>=0.27
+requests>=2.31
+mcp>=1.0
+pdfplumber>=0.11
+pypdf>=4.0

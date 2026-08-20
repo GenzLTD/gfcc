@@ -7,7 +7,7 @@ build/
 .venv/
 venv/
 
-# 数据库
+# 数据�?
 *.db
 db/*.db
 
@@ -35,7 +35,7 @@ Thumbs.db
 # IDE
 .vs/
 
-# 向量数据库 (本地 Chroma)
+# 向量数据�? (本地 Chroma)
 db/chroma_data/
 data/
 
@@ -45,13 +45,14 @@ docker/
 eth_data/
 nine_repos_staging/
 
-# 预处理输出（大型语料）
+# 预处理输出（大型语料�?
 md_import_staging/processed/
 db/documents.jsonl
 import_staging/
 
 # 临时文件
 *.txt
+!requirements.txt
 temp/
 tmp/
 
