@@ -11,6 +11,7 @@
 - `fix(tenet)` resolver 测试平台适配（linux CI）。
 - `fix(ci)` test-libs 补装 pytest。
 - `[验收]` 工程基建补齐：GitHub Actions 四 job（test-libs / test-kernel / test-contracts / build-images）全绿通过（#5, 5m23s）。
+- `docs` 新增 `docs/GITHUB_MIRROR.md`：GitHub 镜像使用指南（给 Mac 侧团队）——双托管架构、CI 四 job 说明、协作者接入与 PR 预检流程、GHCR 镜像拉取、同步纪律三条、Step3 三门用法。
 
 ## 1.1.0 — 2026-08-20
 
