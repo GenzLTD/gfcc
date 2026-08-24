@@ -246,10 +246,10 @@ G3 真端对接：DemoPPI/PlanetX egress 切到 5211 真端 → signal_log 落�
 
 - [x] 三份契约 JSON 入库 `contracts/`（v1.0.0），双方确认
 - [x] gfcc_kernel `/v1/signal-ingest` 上线 5211，W4 E2E 全绿
-- [ ] THOMAS 内部桥 T1-T6 联调通过（指南 T6 口径）
-- [ ] 真信号从 DemoPPI（consensus_match）和 PlanetX（personality_beacon）到达 5211，`signal_log` 落库可查
-- [ ] 三个安全用例通过：重放 duplicate / 错误签名 401 / 免签模式 WARNING
-- [ ] 双方验收记录入库 `docs/`
+- [x] THOMAS 内部桥 T1-T6 联调通过（指南 T6 口径；2026-08-14 Mac 链 A）
+- [x] 真信号从 DemoPPI（consensus_match）和 PlanetX（personality_beacon）到达 5211，`signal_log` 落库可查
+- [x] 三个安全用例通过：重放 duplicate / 错误签名 401 / 免签模式 WARNING（W4 + 联调探活）
+- [x] 双方验收记录入库 `docs/`（G3：[`docs/reviews/G3_真端对接验收_2026-08-24.md`](reviews/G3_真端对接验收_2026-08-24.md)）
 
 ---
 
