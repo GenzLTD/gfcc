@@ -244,8 +244,8 @@ G3 真端对接：DemoPPI/PlanetX egress 切到 5211 真端 → signal_log 落�
 
 ## 九、Step3 完成定义（DoD）
 
-- [ ] 三份契约 JSON 入库 `contracts/`（v1.0.0），双方确认
-- [ ] gfcc_kernel `/v1/signal-ingest` 上线 5211，W4 E2E 全绿
+- [x] 三份契约 JSON 入库 `contracts/`（v1.0.0），双方确认
+- [x] gfcc_kernel `/v1/signal-ingest` 上线 5211，W4 E2E 全绿
 - [ ] THOMAS 内部桥 T1-T6 联调通过（指南 T6 口径）
 - [ ] 真信号从 DemoPPI（consensus_match）和 PlanetX（personality_beacon）到达 5211，`signal_log` 落库可查
 - [ ] 三个安全用例通过：重放 duplicate / 错误签名 401 / 免签模式 WARNING
@@ -320,4 +320,4 @@ G3 真端对接：DemoPPI/PlanetX egress 切到 5211 真端 → signal_log 落�
 
 ---
 
-_本方案由 Mac 侧起草（2026-08-20）。G1 冻结前欢迎 Windows 团队对第二~四节提出异议；冻结后字段变更走契约版本号。_
+_本方案由 Mac 侧起草（2026-08-20）。**G1 已冻结**（2026-08-24，见 [`docs/reviews/G1_契约确认_2026-08-24.md`](reviews/G1_契约确认_2026-08-24.md)）；此后字段变更走契约版本号。_

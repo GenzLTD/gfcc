@@ -19,6 +19,8 @@
 - `feat(scripts)` Step3 W4：新增 `scripts/mock_signal_sender.py` 信号发送端模拟器（demoppi/planetx，覆盖 stored/duplicate/401/422 场景）。
 - `test(kernel)` 新增 `tests/test_signal.py` 16 项：W1 验收全场景（合法 200 stored、缺/多余字段 422、验签失败 401、免签 WARNING、幂等重放同 signal_id）、W3 端口调用记录与画像 trace、W2 双实现语义一致 + SQLite 重启不丢。
 - `docs` .env.example 补 `SIGNAL_INGEST_SECRET` 说明（留空=dev 免签）。
+- `docs` G1 冻结：Mac 确认「契约无异议」；入库 `signal.envelope.v1.json` + `signals/consensus_match.v1.json` + `signals/personality_beacon.v1.json`（v1.0.0，与八份 1.1.0 分家族）。见 `docs/reviews/G1_契约确认_2026-08-24.md`。
+- `ci` `test-contracts` 按家族校验 version，并解析跨目录 `$ref`（envelope → `signals/*.json`）。
 
 ## 1.1.0 — 2026-08-20
 

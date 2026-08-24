@@ -22,6 +22,7 @@
 ## 1. 内核（默认常开）
 
 - **单入口**：`POST /v1/ask`。用户只交需求；解析与分发是内部事。信封见 `contracts/ask.envelope.v1.json`。
+- **信号入口**（并列，不是 Ask 的替代）：`POST /v1/signal-ingest`。机机事件；HMAC 验签；不占成员配额、不经 llm 槽。信封见 `contracts/signal.envelope.v1.json`（v1.0.0）；payload 见 `contracts/signals/`。种子期两种：`consensus_match` → consensus，`personality_beacon` → identity。
 - **信封稳定**：`AskRequest { message, context }` → `AskResponse { port, status, result, suggestions }`。`status` 含 `partial`（半成功：已成功子操作不回滚，未成功可重试）。`intent` 仅作弃用别名，映射到 `port`。`dialog_mode`：`collaboration`（协作）或 `coach`（教练）。
 - **ethos 纯验证者**：验签 / 鉴权 / 配额 / 审计，**不签发**。`sub` 是唯一 uid 桥梁。未认证、uid 空、scope 未列、配额后端不可达 → 拒绝（401 / 403 / 429）。档位 `free/basic/pro/admin` 只管配额，不替代身份。
 - **八角梯**（JWT `roles` + `permissions`，**不是**八个微服务）：旁观 → 参与 → 尝试 → 提议 → 主理 → 组织 → 行动 → 提案。每级「新增的责任」见 `roles.v1.json` `ladder_logic`。升降应有 Dual / CoCo 证据；AI 观察只作辅助；管理员开关只作运维例外。

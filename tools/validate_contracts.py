@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""校验 contracts/*.json：可解析、version 一致、所有 $ref 可解析。
+"""校验 contracts/：可解析、同家族 version 一致、所有 $ref 可解析。
 
-G1 冻结闸门。当前只认同目录文件引用（如 roles.v1.json#/role_enum），
-不拉 http(s) $schema。故意改掉被引用键时必须失败。
+两族互不影响：
+  l0     — contracts/*.json 除 signal.* 外，当前线 1.1.0
+  signal — signal.envelope.v1.json + contracts/signals/*.json，当前线 1.0.0
+
+G1 冻结闸门。只认同仓内文件引用（如 roles.v1.json#/role_enum、
+signals/consensus_match.v1.json），不拉 http(s) $schema。
+故意改掉被引用键时必须失败。
 
 用法（仓库根）：
     python tools/validate_contracts.py
+    python tools/validate_contracts.py [contracts-dir]
 """
 
 from __future__ import annotations
@@ -13,7 +19,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Iterable, List, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 DEFAULT_CONTRACTS_DIR = Path(__file__).resolve().parent.parent / "contracts"
 
@@ -53,27 +59,53 @@ def resolve_pointer(doc: Any, pointer: str) -> Any:
     return current
 
 
-def load_contracts(root: Path) -> dict[str, Any]:
+def family_of(rel: str) -> str:
+    if rel.startswith("signals/") or rel.startswith("signal."):
+        return "signal"
+    return "l0"
+
+
+def iter_contract_files(root: Path) -> List[Path]:
     files = sorted(root.glob("*.json"))
+    signals = root / "signals"
+    if signals.is_dir():
+        files.extend(sorted(signals.glob("*.json")))
+    return files
+
+
+def load_contracts(root: Path) -> dict[str, Any]:
+    files = iter_contract_files(root)
     if not files:
         raise SystemExit(f"no contracts found in {root}")
     docs: dict[str, Any] = {}
-    versions: set[str] = set()
+    versions_by_family: Dict[str, set[str]] = {}
     for path in files:
+        rel = path.relative_to(root).as_posix()
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
-            raise SystemExit(f"FAIL {path.name}: invalid JSON: {exc}") from exc
+            raise SystemExit(f"FAIL {rel}: invalid JSON: {exc}") from exc
         version = data.get("version")
         if not version:
-            raise SystemExit(f"FAIL {path.name}: missing version")
-        versions.add(str(version))
-        docs[path.name] = data
-        print(f"OK {path.name} version={version}")
-    if len(versions) != 1:
-        raise SystemExit(f"FAIL version drift: {sorted(versions)}")
-    print(f"all {len(docs)} contracts at {versions.pop()}")
+            raise SystemExit(f"FAIL {rel}: missing version")
+        family = family_of(rel)
+        versions_by_family.setdefault(family, set()).add(str(version))
+        docs[rel] = data
+        print(f"OK {rel} family={family} version={version}")
+    for family, versions in sorted(versions_by_family.items()):
+        if len(versions) != 1:
+            raise SystemExit(f"FAIL {family} version drift: {sorted(versions)}")
+        print(f"family {family}: {len([r for r in docs if family_of(r) == family])} files at {versions.pop()}")
     return docs
+
+
+def lookup_doc(docs: dict[str, Any], name: str) -> Any:
+    if name in docs:
+        return docs[name]
+    matches = [key for key in docs if key == name or key.endswith("/" + name)]
+    if len(matches) == 1:
+        return docs[matches[0]]
+    return None
 
 
 def check_refs(docs: dict[str, Any]) -> List[Tuple[str, str, str]]:
@@ -86,12 +118,17 @@ def check_refs(docs: dict[str, Any]) -> List[Tuple[str, str, str]]:
                 continue
             file_part, hash_sign, fragment = ref.partition("#")
             target_name = file_part or source
-            if target_name not in docs:
+            target = lookup_doc(docs, target_name)
+            if target is None:
                 failures.append((source, ref, f"missing file {target_name}"))
                 continue
-            pointer = f"/{fragment}" if hash_sign and fragment and not fragment.startswith("/") else fragment
+            pointer = (
+                f"/{fragment}"
+                if hash_sign and fragment and not fragment.startswith("/")
+                else fragment
+            )
             try:
-                resolve_pointer(docs[target_name], pointer)
+                resolve_pointer(target, pointer)
             except (KeyError, ValueError, IndexError, TypeError) as exc:
                 failures.append((source, ref, f"pointer not found: {exc}"))
                 continue

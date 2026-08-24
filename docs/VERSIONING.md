@@ -10,7 +10,7 @@
 | 兼容新增 | **次版本** | 加字段、加端口、加 `status=partial` |
 | 文案/示例 | **修订号** | 注释、zh 标签 |
 
-当前线：`1.1.0`。弃用别名至少保留一个次版本（如 `intent` → `port`，`method` → `methodology_value`）。
+当前线：Ask / 五端口 **1.1.0**。信号线（`signal.envelope` + `contracts/signals/`）**1.0.0**，与 1.1.0 分家族，互不要求同号。
 
 ## 变更流程
 
