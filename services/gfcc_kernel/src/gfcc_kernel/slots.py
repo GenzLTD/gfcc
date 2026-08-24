@@ -199,6 +199,7 @@ class StubStore:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._records: Dict[str, Dict[str, Any]] = {}
+        self._signals: Dict[str, Dict[str, Any]] = {}
 
     def put(self, record: Dict[str, Any]) -> Dict[str, Any]:
         rid = record.get("id") or str(uuid.uuid4())
@@ -245,6 +246,43 @@ class StubStore:
         with self._lock:
             return sum(1 for r in self._records.values() if not r.get("superseded_at"))
 
+    # ------------------------------------------------------------------ #
+    # signal_log（Step3 W2）：幂等键 (signal_type, user_id_hash, nonce)
+    # ------------------------------------------------------------------ #
+
+    def record_signal(self, signal_type: str, user_id_hash: str, nonce: str,
+                      payload: Dict[str, Any]) -> Dict[str, Any]:
+        """幂等写入信号日志。重复三元组返回已有记录（不重复入库）。"""
+        with self._lock:
+            for rec in self._signals.values():
+                if (rec["signal_type"] == signal_type
+                        and rec["user_id_hash"] == user_id_hash
+                        and rec["nonce"] == nonce):
+                    return {"signal_id": rec["signal_id"], "duplicate": True,
+                            "created_at": rec["created_at"]}
+            signal_id = uuid.uuid4().hex
+            rec = {
+                "signal_id": signal_id,
+                "signal_type": signal_type,
+                "user_id_hash": user_id_hash,
+                "nonce": nonce,
+                "payload": dict(payload),
+                "created_at": _now(),
+            }
+            self._signals[signal_id] = rec
+            return {"signal_id": signal_id, "duplicate": False, "created_at": rec["created_at"]}
+
+    def get_signal(self, signal_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            rec = self._signals.get(signal_id)
+            return dict(rec) if rec else None
+
+    def query_signals(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """最新在前，最多 limit 条。"""
+        with self._lock:
+            items = sorted(self._signals.values(), key=lambda r: r["created_at"])
+            return [dict(r) for r in items][-limit:][::-1]
+
 
 # --------------------------------------------------------------------------- #
 # store 槽（sqlite）
@@ -273,6 +311,15 @@ class SQLiteStore:
     CREATE INDEX IF NOT EXISTS idx_circle ON memory_records(circle_id);
     CREATE INDEX IF NOT EXISTS idx_active ON memory_records(superseded_at)
         WHERE superseded_at IS NULL;
+    CREATE TABLE IF NOT EXISTS signal_log (
+        signal_id     TEXT PRIMARY KEY,
+        signal_type   TEXT NOT NULL,
+        user_id_hash  TEXT NOT NULL,
+        nonce         TEXT NOT NULL,
+        payload       TEXT NOT NULL,
+        created_at    TEXT NOT NULL,
+        UNIQUE (signal_type, user_id_hash, nonce)
+    );
     """
 
     def __init__(self, db_path: str = "data/memory.db") -> None:
@@ -385,6 +432,72 @@ class SQLiteStore:
                 "SELECT COUNT(*) FROM memory_records WHERE superseded_at IS NULL"
             )
             return int(cur.fetchone()[0])
+
+    # ------------------------------------------------------------------ #
+    # signal_log（Step3 W2）：幂等键 (signal_type, user_id_hash, nonce)
+    # ------------------------------------------------------------------ #
+
+    def record_signal(self, signal_type: str, user_id_hash: str, nonce: str,
+                      payload: Dict[str, Any]) -> Dict[str, Any]:
+        """幂等写入信号日志。UNIQUE 三元组冲突 → 返回已有记录（不重复入库）。"""
+        signal_id = uuid.uuid4().hex
+        created_at = _now()
+        with self._lock:
+            with self._conn:  # 事务
+                cur = self._conn.execute(
+                    "SELECT signal_id, created_at FROM signal_log "
+                    "WHERE signal_type=? AND user_id_hash=? AND nonce=?",
+                    (signal_type, user_id_hash, nonce),
+                )
+                row = cur.fetchone()
+                if row is not None:
+                    return {"signal_id": row[0], "duplicate": True, "created_at": row[1]}
+                self._conn.execute(
+                    "INSERT INTO signal_log "
+                    "(signal_id, signal_type, user_id_hash, nonce, payload, created_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    (signal_id, signal_type, user_id_hash, nonce,
+                     json.dumps(payload, ensure_ascii=False), created_at),
+                )
+        return {"signal_id": signal_id, "duplicate": False, "created_at": created_at}
+
+    def get_signal(self, signal_id: str) -> Optional[Dict[str, Any]]:
+        with self._lock:
+            cur = self._conn.execute(
+                "SELECT signal_id, signal_type, user_id_hash, nonce, payload, created_at "
+                "FROM signal_log WHERE signal_id = ?", (signal_id,)
+            )
+            row = cur.fetchone()
+        if row is None:
+            return None
+        return {
+            "signal_id": row[0],
+            "signal_type": row[1],
+            "user_id_hash": row[2],
+            "nonce": row[3],
+            "payload": json.loads(row[4]),
+            "created_at": row[5],
+        }
+
+    def query_signals(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """最新在前，最多 limit 条。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT signal_id, signal_type, user_id_hash, nonce, payload, created_at "
+                "FROM signal_log ORDER BY created_at DESC, signal_id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "signal_id": r[0],
+                "signal_type": r[1],
+                "user_id_hash": r[2],
+                "nonce": r[3],
+                "payload": json.loads(r[4]),
+                "created_at": r[5],
+            }
+            for r in rows
+        ]
 
     def close(self) -> None:
         with self._lock:

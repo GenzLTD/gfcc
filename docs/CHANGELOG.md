@@ -13,6 +13,12 @@
 - `[验收]` 工程基建补齐：GitHub Actions 四 job（test-libs / test-kernel / test-contracts / build-images）全绿通过（#5, 5m23s）。
 - `docs` 新增 `docs/GITHUB_MIRROR.md`：GitHub 镜像使用指南（给 Mac 侧团队）——双托管架构、CI 四 job 说明、协作者接入与 PR 预检流程、GHCR 镜像拉取、同步纪律三条、Step3 三门用法。
 - `docs` 新增 `docs/Phase2_Step3_Windows_开工清单.md`：Windows 侧 W1-W4 开工动员——G1 契约确认为当前唯一卡点、任务顺序与依赖、三条纪律，任务定义以 Step3 方案 §5.1 为准。
+- `feat(kernel)` Step3 W1：新增 `POST /v1/signal-ingest`（signal.envelope.v1）——HMAC 验签（`SIGNAL_INGEST_SECRET` 留空=dev 免签+WARNING）、Pydantic 严格信封（additionalProperties=false，缺/多余字段 422）、幂等键 `(signal_type, user_id_hash, nonce)`、错误码 `401 invalid_signature / 422 invalid_envelope`。
+- `feat(kernel)` Step3 W2：store 槽新增 `signal_log` 表（SQLite/Stub 双实现语义一致，UNIQUE 三元组防重，重启不丢）。
+- `feat(kernel)` Step3 W3：确定性端口路由 `consensus_match→consensus` / `personality_beacon→identity`；两端口新增 `ingest_signal`（共识 match 落 score 证据 / 人格 beacon mint MBTI auxiliary trace）。
+- `feat(scripts)` Step3 W4：新增 `scripts/mock_signal_sender.py` 信号发送端模拟器（demoppi/planetx，覆盖 stored/duplicate/401/422 场景）。
+- `test(kernel)` 新增 `tests/test_signal.py` 16 项：W1 验收全场景（合法 200 stored、缺/多余字段 422、验签失败 401、免签 WARNING、幂等重放同 signal_id）、W3 端口调用记录与画像 trace、W2 双实现语义一致 + SQLite 重启不丢。
+- `docs` .env.example 补 `SIGNAL_INGEST_SECRET` 说明（留空=dev 免签）。
 
 ## 1.1.0 — 2026-08-20
 

@@ -20,6 +20,13 @@ from .dispatcher import parse_then_dispatch
 from .envelope import AskRequest, AskResponse
 from .registry import PortRegistry
 from .security import KernelPolicy, build_security
+from .signal import (
+    PayloadError,
+    SignalEnvelope,
+    route_signal,
+    validate_payload,
+    verify_signature,
+)
 from .slots import OllamaLLM, SQLiteStore, build_llm, build_store
 
 load_dotenv()
@@ -110,6 +117,86 @@ async def v1_ask(request: Request, body: AskRequest) -> AskResponse:
         llm=_llm,
     )
     return parse_then_dispatch(body, ctx)
+
+
+# --------------------------------------------------------------------------- #
+# /v1/signal-ingest（Step3 W1-W3：机机事件入口）
+# --------------------------------------------------------------------------- #
+
+def _dispatch_signal(signal_id: str, user_id_hash: str, signal_type: str,
+                     payload: Dict[str, Any], port: str) -> None:
+    """把新信号下发给对应端口适配器。
+
+    信号已先落 signal_log（幂等），端口处理失败只记 WARNING，不阻塞摄入
+    （重放安全：同 nonce 重发会走 duplicate 分支，不重复下发）。
+    """
+    adapter = _registry.get(port)
+    if adapter is None or not hasattr(adapter, "ingest_signal"):
+        logger.warning("signal-ingest: port %s has no ingest_signal, signal_id=%s dropped at port", port, signal_id)
+        return
+    try:
+        result = adapter.ingest_signal(signal_id, user_id_hash, payload)
+        if not result.ok:
+            logger.warning("signal-ingest: port %s rejected signal_id=%s: %s", port, signal_id, result.error)
+    except Exception:  # noqa: BLE001
+        logger.exception("signal-ingest: port %s ingest failed for signal_id=%s", port, signal_id)
+
+
+@app.post("/v1/signal-ingest")
+async def v1_signal_ingest(request: Request) -> JSONResponse:
+    """信号摄入：验签 → 严格信封校验 → 幂等落库 → 端口路由。
+
+    - 401 invalid_signature：SIGNAL_INGEST_SECRET 已配但 X-Signature 不匹配。
+    - 422 invalid_envelope：信封缺/多余字段、格式错误、payload 不符契约。
+    - 200 stored / duplicate：幂等键 (signal_type, user_id_hash, nonce)。
+    """
+    raw = await request.body()
+
+    # 1) 验签：SIGNAL_INGEST_SECRET 留空 = dev 免签 + WARNING（本地联调）
+    secret = os.getenv("SIGNAL_INGEST_SECRET", "").strip()
+    if secret:
+        header_sig = request.headers.get("X-Signature", "")
+        if not verify_signature(secret, raw, header_sig):
+            return JSONResponse(
+                status_code=401,
+                content={"code": "invalid_signature", "detail": "X-Signature HMAC mismatch"},
+            )
+    else:
+        logger.warning("signal-ingest: SIGNAL_INGEST_SECRET unset — dev no-auth mode (local integration only)")
+
+    # 2) 信封严格校验（additionalProperties=false）
+    try:
+        env = SignalEnvelope.model_validate_json(raw or b"{}")
+    except Exception:  # noqa: BLE001
+        return JSONResponse(
+            status_code=422,
+            content={"code": "invalid_envelope",
+                     "detail": "envelope must conform to signal.envelope.v1 (no extra/missing fields)"},
+        )
+
+    # 3) payload 契约校验
+    try:
+        validate_payload(env.signal_type, env.payload)
+    except PayloadError as exc:
+        return JSONResponse(status_code=422, content={"code": "invalid_envelope", "detail": str(exc)})
+
+    # 4) 幂等落库（signal_log，经 store 槽）
+    result = _store.record_signal(env.signal_type, env.user_id_hash, env.nonce, env.payload)
+    signal_id = result["signal_id"]
+
+    # 5) 端口路由（仅新信号下发；duplicate 直接返回，不重复触发端口）
+    port = route_signal(env.signal_type)
+    if not result["duplicate"]:
+        _dispatch_signal(signal_id, env.user_id_hash, env.signal_type, env.payload, port)
+
+    return JSONResponse(
+        status_code=200,
+        content={
+            "status": "duplicate" if result["duplicate"] else "stored",
+            "signal_id": signal_id,
+            "port": port,
+        },
+    )
 
 
 # --------------------------------------------------------------------------- #

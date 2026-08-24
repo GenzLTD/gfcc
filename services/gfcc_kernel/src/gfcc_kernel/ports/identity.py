@@ -34,6 +34,7 @@ class IdentityAdapter:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._profiles: Dict[str, Dict[str, Any]] = {}
+        self._signal_beacons: List[Dict[str, Any]] = []
 
     def _ensure(self, sub: str) -> Dict[str, Any]:
         if sub not in self._profiles:
@@ -106,6 +107,38 @@ class IdentityAdapter:
                 }
             )
         return PortOpResult(ok=True, id=sub, data={"profile": dict(profile)})
+
+    # ------------------------------------------------------------------ #
+    # 信号摄入（Step3 W3）：personality_beacon → 画像 auxiliary trace
+    # ------------------------------------------------------------------ #
+
+    def ingest_signal(self, signal_id: str, user_id_hash: str, payload: Dict[str, Any]) -> PortOpResult:
+        """接收 personality_beacon 信号：mint MBTI auxiliary trace + 记录调用。
+
+        sub 即信封 user_id_hash（email sha256），与画像 sub 同构；source_port=mbti
+        属 AUXILIARY_SOURCES 白名单，只做 auxiliary 不做 evidence（画像不自证能力）。
+        """
+        ptype = (payload.get("personality_type") or "").upper()
+        trace = self.append_trace(
+            sub=user_id_hash,
+            label=f"personality_beacon:{ptype}",
+            source_port="mbti",
+            weight="auxiliary",
+        )
+        with self._lock:
+            beacon = {
+                "signal_id": signal_id,
+                "user_id_hash": user_id_hash,
+                "payload": dict(payload),
+                "trace_id": trace.id,
+                "received_at": _now(),
+            }
+            self._signal_beacons.append(beacon)
+        return PortOpResult(ok=True, id=signal_id, data={"beacon": dict(beacon)})
+
+    def list_signal_beacons(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [dict(b) for b in self._signal_beacons]
 
     # ------------------------------------------------------------------ #
     # 查询辅助

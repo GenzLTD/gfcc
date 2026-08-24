@@ -37,6 +37,7 @@ class ConsensusAdapter:
         self._lock = threading.Lock()
         self._threshold = max(0, min(100, threshold))
         self._proposals: Dict[str, Dict[str, Any]] = {}
+        self._signal_evidence: List[Dict[str, Any]] = []
 
     # ------------------------------------------------------------------ #
     # operations
@@ -136,6 +137,30 @@ class ConsensusAdapter:
                 return PortOpResult(ok=False, error="verified proposal cannot be expired")
             prop["status"] = "expired"
         return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop)})
+
+    # ------------------------------------------------------------------ #
+    # 信号摄入（Step3 W3）：consensus_match → 共议证据
+    # ------------------------------------------------------------------ #
+
+    def ingest_signal(self, signal_id: str, user_id_hash: str, payload: Dict[str, Any]) -> PortOpResult:
+        """接收 consensus_match 信号，作为 score 证据挂起。
+
+        stub 阶段：只记录调用，不自动推进状态机（score 仍需显式触发）。
+        返回的 evidence 可在后续 score() 中引用。
+        """
+        with self._lock:
+            ev = {
+                "signal_id": signal_id,
+                "user_id_hash": user_id_hash,
+                "payload": dict(payload),
+                "received_at": _now(),
+            }
+            self._signal_evidence.append(ev)
+        return PortOpResult(ok=True, id=signal_id, data={"evidence": dict(ev)})
+
+    def list_signal_evidence(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [dict(e) for e in self._signal_evidence]
 
     # ------------------------------------------------------------------ #
     # 查询辅助
