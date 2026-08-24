@@ -38,7 +38,7 @@ jobs:
       - name: Run kernel tests
         run: pytest -q services/gfcc_kernel/tests
 
-  # ---- 契约校验（contracts/*.json 合法性 + 版本号一致，防 G1 冻结后字段漂移） ----
+  # ---- 契约校验（JSON 合法 + version 一致 + $ref 可解析，防 G1 冻结后字段漂移） ----
   test-contracts:
     runs-on: ubuntu-latest
     steps:
@@ -47,21 +47,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Validate contracts
-        run: |
-          python - <<'EOF'
-          import json, glob, sys
-          files = sorted(glob.glob("contracts/*.json"))
-          assert files, "no contracts found"
-          versions = set()
-          for f in files:
-              d = json.load(open(f, encoding="utf-8"))
-              v = d.get("version")
-              assert v, f"{f}: missing version"
-              versions.add(v)
-              print(f"OK {f} version={v}")
-          assert len(versions) == 1, f"version drift: {versions}"
-          print(f"all {len(files)} contracts at {versions.pop()}")
-          EOF
+        run: python tools/validate_contracts.py
 
 
   # ---- 镜像构建 + 推送 GHCR（仅 main 分支） ----
