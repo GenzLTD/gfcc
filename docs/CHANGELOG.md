@@ -27,6 +27,7 @@
 - `feat(consensus-math)` 合意引擎 W1 启动：`consensus_math.py` 纯函数库（拉普拉斯平滑同意概率、单/双比例 z 检验 90% 置信、同意度/分歧度、跨组共识连乘、代表性 repness、consensus_report 汇入 score_evidence）；零第三方依赖，scikit-learn 组件留 extras 后续挂载；27 项单测全绿（自造矩阵）。
 - `docs` 确认文档追加分工澄清：W1 归 Windows、M2/M3 归 Mac（Mac 侧推进）、并行互不等待；GitHub 镜像仍不推送。
 - `docs` G3 通过：PlanetX `personality_beacon` 与 DemoPPI `consensus_match` 真信号落 Windows `signal_log`（nonce 对账）。见 [`docs/reviews/G3_真端对接验收_2026-08-24.md`](reviews/G3_真端对接验收_2026-08-24.md)。
+- `docs` 新增 [`docs/MVP_资源配置清单.md`](MVP_资源配置清单.md)：产品 MVP 内测门禁（3～4 真人席位 + 评估勾选）；未评估齐人不得开测。
 
 ## 1.1.0 — 2026-08-20
 
