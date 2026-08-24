@@ -21,6 +21,9 @@
 - `docs` .env.example 补 `SIGNAL_INGEST_SECRET` 说明（留空=dev 免签）。
 - `docs` G1 冻结：Mac 确认「契约无异议」；入库 `signal.envelope.v1.json` + `signals/consensus_match.v1.json` + `signals/personality_beacon.v1.json`（v1.0.0，与八份 1.1.0 分家族）。见 `docs/reviews/G1_契约确认_2026-08-24.md`。
 - `ci` `test-contracts` 按家族校验 version，并解析跨目录 `$ref`（envelope → `signals/*.json`）。
+- `feat(kernel)` G1 对齐：`validate_payload` 收紧到与冻结 Schema 一致——payload 顶层 `additionalProperties=false`（未列字段 422）、`traits[{name,score}]` 严格结构、`assessment_score` 类型校验；`test_signal.py` 增补 3 项（71 项全绿）。
+- `docs` 新增 `docs/reviews/合意引擎吸收_Windows侧确认_2026-08-24.md`：书面确认 Mac 评审（W1 并行、sklearn 走 extras、block≠below_threshold、ack 不可被算法跳过），承诺 W1 独立模块、Step3 主线继续、W2 等 G3。
+- `docs` 清理吸收建议/技术调研文档末尾「内容由AI生成」水印。
 
 ## 1.1.0 — 2026-08-20
 

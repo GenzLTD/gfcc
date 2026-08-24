@@ -141,6 +141,41 @@ class TestV1SignalIngest:
         r = _post(_envelope(nonce="sB" * 8, signal_type="hacked_signal"))
         assert r.status_code == 422
 
+    def test_payload_unlisted_field_422(self, monkeypatch):
+        """G1 冻结后严格化：payload 未列字段一律拒绝（Schema additionalProperties=false）。"""
+        monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
+        bad = dict(_envelope()["payload"], hidden_backdoor="x")
+        r = _post(_envelope(nonce="sE" * 8, payload=bad))
+        assert r.status_code == 422
+        assert r.json()["code"] == "invalid_envelope"
+
+    def test_beacon_traits_strict_422(self, monkeypatch):
+        monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
+        body = {
+            "signal_type": "personality_beacon",
+            "user_id_hash": HASH_A,
+            "nonce": "sF" * 8,
+            "payload": {
+                "personality_type": "INTJ",
+                "traits": [{"name": "creative", "score": 0.8, "extra": 1}],  # 元素多余字段
+                "source": "planetx",
+            },
+        }
+        r = _post(body)
+        assert r.status_code == 422
+        assert r.json()["code"] == "invalid_envelope"
+
+    def test_beacon_assessment_score_type_422(self, monkeypatch):
+        monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
+        body = {
+            "signal_type": "personality_beacon",
+            "user_id_hash": HASH_A,
+            "nonce": "sG" * 8,
+            "payload": {"personality_type": "INTJ", "assessment_score": "high", "source": "planetx"},
+        }
+        r = _post(body)
+        assert r.status_code == 422
+
     # ------------------------------------------------------------------ #
     # W3：端口 stub 收到调用记录
     # ------------------------------------------------------------------ #

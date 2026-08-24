@@ -79,34 +79,74 @@ def verify_signature(secret: str, raw_body: bytes, header_signature: str) -> boo
     return hmac.compare_digest(expected, header_signature.strip().lower())
 
 
-def validate_payload(signal_type: str, payload: Dict[str, Any]) -> None:
-    """按草案 §3.1/§3.2 校验 payload 必填字段与约束。
+# 冻结 Schema（contracts/signals/*.v1.json，G1 v1.0.0）允许的 payload 键
+_PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
+    "consensus_match": {
+        "allowed": {"match_score", "shared_tags", "peer_id_hash", "source", "generated_at"},
+        "required": {"match_score", "shared_tags", "peer_id_hash", "source"},
+    },
+    "personality_beacon": {
+        "allowed": {"personality_type", "traits", "assessment_score", "source", "generated_at"},
+        "required": {"personality_type", "source"},
+    },
+}
 
-    三份 signal JSON Schema 由 Mac 侧在 G1 冻结后入库 contracts/；本函数为
-    种子期轻量校验（不拒绝 payload 内未列字段，等 Schema 入库后严格化）。
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def validate_payload(signal_type: str, payload: Dict[str, Any]) -> None:
+    """按冻结 Schema 校验 payload：required + additionalProperties=false + 字段约束。
+
+    与 contracts/signals/*.v1.json（G1 冻结 v1.0.0）逐项对齐：
+    - 顶层只允许契约列出的键，未列字段一律 PayloadError（→ 422 invalid_envelope）
+    - required 缺一即报错
+    - consensus_match：match_score∈[0,1]、shared_tags 1..10 非空串、peer_id_hash 64 hex、source=demoppi
+    - personality_beacon：personality_type∈MBTI 16、traits[{name,score}] 严格、assessment_score number、source=planetx
     """
+    schema = _PAYLOAD_SCHEMAS[signal_type]
+    extra = set(payload) - schema["allowed"]
+    if extra:
+        raise PayloadError(f"{signal_type} payload has unlisted fields: {sorted(extra)}")
+    missing = schema["required"] - set(payload)
+    if missing:
+        raise PayloadError(f"{signal_type} payload missing required: {sorted(missing)}")
+
     if signal_type == "consensus_match":
-        score = payload.get("match_score")
-        if score is None or not isinstance(score, (int, float)) or isinstance(score, bool):
-            raise PayloadError("consensus_match requires match_score (number 0..1)")
-        if not 0.0 <= float(score) <= 1.0:
-            raise PayloadError("match_score must be within 0..1")
-        tags = payload.get("shared_tags")
+        score = payload["match_score"]
+        if not _is_number(score) or not 0.0 <= float(score) <= 1.0:
+            raise PayloadError("match_score must be number within 0..1")
+        tags = payload["shared_tags"]
         if not isinstance(tags, list) or not 1 <= len(tags) <= 10:
             raise PayloadError("shared_tags required: string[] 1..10 items")
         if not all(isinstance(t, str) and t.strip() for t in tags):
             raise PayloadError("shared_tags items must be non-empty strings")
-        peer = payload.get("peer_id_hash")
+        peer = payload["peer_id_hash"]
         if not isinstance(peer, str) or not HASH_RE.fullmatch(peer):
             raise PayloadError("peer_id_hash required: 64 hex")
-        if payload.get("source") != "demoppi":
+        if payload["source"] != "demoppi":
             raise PayloadError("source must be 'demoppi'")
     elif signal_type == "personality_beacon":
-        ptype = payload.get("personality_type")
+        ptype = payload["personality_type"]
         if not isinstance(ptype, str) or ptype.upper() not in MBTI_TYPES:
             raise PayloadError("personality_type required: MBTI 16 types")
-        if payload.get("source") != "planetx":
+        if payload["source"] != "planetx":
             raise PayloadError("source must be 'planetx'")
+        traits = payload.get("traits")
+        if traits is not None:
+            if not isinstance(traits, list):
+                raise PayloadError("traits must be array of {name, score}")
+            for item in traits:
+                if not isinstance(item, dict) or set(item) != {"name", "score"}:
+                    raise PayloadError("traits item must be exactly {name, score}")
+                if not isinstance(item["name"], str) or not item["name"].strip():
+                    raise PayloadError("traits.name must be non-empty string")
+                if not _is_number(item["score"]):
+                    raise PayloadError("traits.score must be number")
+        assessment = payload.get("assessment_score")
+        if assessment is not None and not _is_number(assessment):
+            raise PayloadError("assessment_score must be number")
     else:  # 不可达（信封 enum 已挡），防御性兜底
         raise PayloadError(f"unsupported signal_type: {signal_type}")
 

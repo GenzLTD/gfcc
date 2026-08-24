@@ -211,5 +211,3 @@ circle 可切换：consent / objection（社会学决，适合高信任小圈子
 | Loomio 仓库整体克隆 | — | ❌ 网络受限（GitHub 443 间歇不通），后续可补 |
 
 **下一步建议**：① W1 开工前可再精读 `stats.clj`（z 检验实现细节）与 `clusters.clj`（k-means+轮廓系数）；② Loomio 的 `PollService.calculate_results` 值得补一次抓取（STV 计票逻辑）；③ 把本报告结论同步给 Jason 侧，作为 Step3 之外的第二条并行开发线。
-
-内容由AI生成，仅供参考
