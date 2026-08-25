@@ -28,23 +28,23 @@ services/agentmemory/dialogue/
 
 ## 快速开始
 
-数据默认落在本目录 `data/`（自动被 .gitignore 忽略）；生产/日常使用建议用 `--db` 指向仓库外数据目录，避免在仓库内堆积运行数据。
+数据默认落在本目录 `data/`（自动被 .gitignore 忽略）；生产/日常使用建议用 `--db` 指向仓库外数据目录，避免在仓库内堆积运行数据。以下命令从 `services\agentmemory\dialogue` 目录执行（`--db` 为顶层参数，须放在子命令前）。
 
 ```powershell
 # 1. 建库（幂等）
-python store.py init --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
+python store.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db init
 
 # 2. 批量导入种子样例（UTF-8 文件，规避 PowerShell 中文乱码）
-python store.py import-jsonl --file docs\examples\dialogue_library_seed.jsonl --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
+python store.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db import-jsonl --file D:\gfcc\docs\examples\dialogue_library_seed.jsonl
 
 # 3. 检索（≥3 字符走 FTS5 trigram，<3 字符自动回退 LIKE）
-python query.py recall 本机复核 --limit 5 --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
-python query.py recall ea76e86 --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
+python query.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db recall 本机复核 --limit 5
+python query.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db recall ea76e86
 
 # 4. 回看 / 清单 / 统计
-python query.py transcript <session_id> --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
-python query.py list-sessions --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
-python query.py stats --db E:\CorpusPipeline\dialogue_library\data\dialogue.db
+python query.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db transcript <session_id>
+python query.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db list-sessions
+python query.py --db E:\CorpusPipeline\dialogue_library\data\dialogue.db stats
 ```
 
 ## Schema 约定（v1.0.0）
