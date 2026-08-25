@@ -23,6 +23,11 @@
 - `ci` `test-contracts` 按家族校验 version，并解析跨目录 `$ref`（envelope → `signals/*.json`）。
 - `feat(kernel)` G1 对齐：`validate_payload` 收紧到与冻结 Schema 一致——payload 顶层 `additionalProperties=false`（未列字段 422）、`traits[{name,score}]` 严格结构、`assessment_score` 类型校验；`test_signal.py` 增补 3 项（71 项全绿）。
 - `docs` 新增 `docs/reviews/合意引擎吸收_Windows侧确认_2026-08-24.md`：书面确认 Mac 评审（W1 并行、sklearn 走 extras、block≠below_threshold、ack 不可被算法跳过），承诺 W1 独立模块、Step3 主线继续、W2 等 G3。
+- `feat(scripts)` Step3 W4 交付（Mac 交件清单）：`mock_signal_sender.py` 迁至 `services/gfcc_kernel/scripts/`，覆盖 7 用例（valid-beacon / valid-match / duplicate / bad-signature / missing-field / extra-field / unknown-type）+ 杀进程重启两阶段持久化验证；密钥只读 `SIGNAL_INGEST_SECRET`（不写进脚本）；新增 `scripts/query_signal_log.py`（官方固定 SQL，两侧同名防分叉）。
+- `feat(kernel)` 契约对齐：未知 `signal_type` → `422 unsupported_signal`（区别于 `invalid_envelope`），对齐方案 §3.3 语义。
+- `feat(kernel)` `SIGNAL_LOG_DB` 支持：store 槽落库路径读取顺序 `SIGNAL_LOG_DB` → `STORE_DB_PATH`（Mac/Windows 同名键防分叉）。
+- `docs` G1 Windows 侧书面确认（契约无异议）追加至 `docs/reviews/G1_契约确认_2026-08-24.md`；kernel README 补 Step3 信号链路（起 5211 / 跑 W4 / .env 键名 / 查库 SQL）。
+- `test(kernel)` 98 项全绿（含 `unsupported_signal` 断言）；`test(tenet)` 20 项全绿（resolver 已含 darwin/linux 平台路径）。
 - `docs` 清理吸收建议/技术调研文档末尾「内容由AI生成」水印。
 - `feat(consensus-math)` 合意引擎 W1 启动：`consensus_math.py` 纯函数库（拉普拉斯平滑同意概率、单/双比例 z 检验 90% 置信、同意度/分歧度、跨组共识连乘、代表性 repness、consensus_report 汇入 score_evidence）；零第三方依赖，scikit-learn 组件留 extras 后续挂载；27 项单测全绿（自造矩阵）。
 - `docs` 确认文档追加分工澄清：W1 归 Windows、M2/M3 归 Mac（Mac 侧推进）、并行互不等待；GitHub 镜像仍不推送。

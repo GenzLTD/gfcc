@@ -30,6 +30,7 @@ copy .env.example .env
 
 - `GET /health` → 服务信息
 - `POST /v1/ask` → `{ message, context? }` → `{ port, status, result, suggestions, confidence }`
+- `POST /v1/signal-ingest` → 信号摄入（Step3 W1-W4，见下）
 
 请求示例：
 
@@ -80,6 +81,37 @@ STORE_DB_PATH=data/memory.db
 ```
 
 `/health` 会如实返回 `store=stub|sqlite` 与 `llm=stub|ollama`，便于确认当前装配。
+
+## Step3 信号链路（W1-W4，对齐 Phase2_Step3 / contracts/signals/*.v1.json）
+
+### 端点与语义
+- `POST /v1/signal-ingest`：验签 → 严格信封 → 幂等落库（`signal_log`）→ 端口路由。
+- 200 `stored|duplicate` + `signal_id` + `port`；401 `invalid_signature`；422 `invalid_envelope|unsupported_signal`。
+
+### .env 键（信号链路专用，与 `ETHOS_AUTH_SECRET` 无关，**不混用**）
+- `SIGNAL_INGEST_SECRET`：信号 HMAC 密钥（只读环境变量，发送脚本不写死）。
+- `SIGNAL_LOG_DB`：signal_log 落库路径（Mac 约定 `data/signal_log.db`；未设回退 `STORE_DB_PATH`）。
+- `STORE_PROVIDER=sqlite`：启用落库（stub = 内存，重启即空）。
+
+### W4 发送器（全量 E2E 的"发送"一截，入库可复跑）
+```powershell
+# 1) 起 5211（见"启动"）+ .env 配好上述三个键
+# 2) 全量 7 用例：PASS 全绿出口码 0，任一 FAIL 出口码 1
+$env:SIGNAL_INGEST_SECRET = "<与 5211 相同>"
+python scripts/mock_signal_sender.py --base http://127.0.0.1:5211
+# 3) 杀进程持久化（两阶段，手动重启 5211）
+python scripts/mock_signal_sender.py --case restart-persist-seed
+#    ← 杀掉 5211 再启动
+python scripts/mock_signal_sender.py --case restart-persist-verify
+```
+
+### 查库（官方固定 SQL，两侧同名防分叉）
+```powershell
+python scripts/query_signal_log.py                  # 最近 20 条
+python scripts/query_signal_log.py --json --limit 5
+# 固定 SQL：SELECT signal_id, signal_type, user_id_hash, nonce, created_at
+#             FROM signal_log ORDER BY created_at DESC LIMIT ?;
+```
 
 ## 设计约束
 

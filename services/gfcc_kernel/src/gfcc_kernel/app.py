@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import Any, Dict, Optional
@@ -22,6 +23,7 @@ from .registry import PortRegistry
 from .security import KernelPolicy, build_security
 from .signal import (
     PayloadError,
+    SIGNAL_ROUTE,
     SignalEnvelope,
     route_signal,
     validate_payload,
@@ -168,6 +170,19 @@ async def v1_signal_ingest(request: Request) -> JSONResponse:
     try:
         env = SignalEnvelope.model_validate_json(raw or b"{}")
     except Exception:  # noqa: BLE001
+        # 契约语义（Phase2_Step3 §3.3）：未知 signal_type → 422 unsupported_signal；
+        # 其余信封错误（缺/多余字段、格式不符）→ 422 invalid_envelope
+        try:
+            raw_obj = json.loads(raw or b"{}")
+        except Exception:  # noqa: BLE001
+            raw_obj = {}
+        st = raw_obj.get("signal_type")
+        if isinstance(st, str) and st not in SIGNAL_ROUTE:
+            return JSONResponse(
+                status_code=422,
+                content={"code": "unsupported_signal",
+                         "detail": f"unknown signal_type: {st}"},
+            )
         return JSONResponse(
             status_code=422,
             content={"code": "invalid_envelope",

@@ -505,10 +505,20 @@ class SQLiteStore:
 
 
 def build_store() -> Any:
-    """按 STORE_PROVIDER 装配 store 槽。留空/不配 = stub（内存）。"""
+    """按 STORE_PROVIDER 装配 store 槽。留空/不配 = stub（内存）。
+
+    落库路径读取顺序（Mac/Windows 两侧同名键，防分叉）：
+      1. SIGNAL_LOG_DB（信号日志专用，Mac 约定 data/signal_log.db）
+      2. STORE_DB_PATH（历史键，默认 data/memory.db）
+    signal_log 与 memory_records 同文件存储（同一 schema），SIGNAL_LOG_DB
+    只改文件位置，不改表结构。
+    """
     provider = os.getenv("STORE_PROVIDER", "stub").strip().lower()
     if provider == "sqlite":
-        return SQLiteStore(db_path=os.getenv("STORE_DB_PATH", "data/memory.db").strip() or "data/memory.db")
+        db_path = (os.getenv("SIGNAL_LOG_DB")
+                   or os.getenv("STORE_DB_PATH", "data/memory.db").strip()
+                   or "data/memory.db")
+        return SQLiteStore(db_path=db_path)
     return StubStore()
 
 

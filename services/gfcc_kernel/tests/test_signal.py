@@ -137,9 +137,11 @@ class TestV1SignalIngest:
         assert r.json()["code"] == "invalid_envelope"
 
     def test_unknown_signal_type_422(self, monkeypatch):
+        """契约语义：未知 signal_type → 422 unsupported_signal（区别于 invalid_envelope）。"""
         monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
         r = _post(_envelope(nonce="sB" * 8, signal_type="hacked_signal"))
         assert r.status_code == 422
+        assert r.json()["code"] == "unsupported_signal"
 
     def test_payload_unlisted_field_422(self, monkeypatch):
         """G1 冻结后严格化：payload 未列字段一律拒绝（Schema additionalProperties=false）。"""
