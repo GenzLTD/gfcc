@@ -3,7 +3,8 @@
 > **地位**：产品 MVP（vision 五条判据）开工门禁，**不是**工程联调清单。  
 > **对照**：[vision.md](vision.md) 五条成功判据 · [roles.v1.json](../contracts/roles.v1.json) · [consensus.v1.json](../contracts/consensus.v1.json) · [contribution.v1.json](../contracts/contribution.v1.json) · [G3 真端对接验收](reviews/G3_真端对接验收_2026-08-24.md)  
 > **纪律**：G3 只证明管道通。MVP 内测必须让一个**真共同体**走完共议与兑现。本地双机互打、开发号互 ack、管理员拨角色，**一律不算内测开始**。  
-> **状态（2026-08-24）**：清单已起草，**真实评估未做 → 不具备开工条件**。
+> **状态（2026-08-24）**：清单已起草，**真实评估未做 → 不具备开工条件**。  
+> **联邦硬化（另一条线）**：单机部署后的发件箱 / 密钥轮换等见 [`POST_DEPLOY_FEDERATION_HARDENING.md`](POST_DEPLOY_FEDERATION_HARDENING.md)，**不替代本页 G6，也不在部署完成前开工**。
 
 ---
 

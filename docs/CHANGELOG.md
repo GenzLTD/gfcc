@@ -2,6 +2,8 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `docs` 新增 [`docs/POST_DEPLOY_FEDERATION_HARDENING.md`](POST_DEPLOY_FEDERATION_HARDENING.md)：单机云端部署完成后的联邦硬化摘录（ingest 快回、密钥轮换、signal_log 只追加）；完整待办在 THOMAS `docs/POST_DEPLOY_RESILIENCE_BACKLOG.md`。部署完成前不实施。
+
 - `feat(kernel)` gfcc_kernel 1.1.0 上线：`POST /v1/ask` 单入口信封 + 五槽（llm/tools/session/policy/store）+ 五端口默认 stub 组合（gfcc.default）。
 - `feat(kernel)` Step1-2：llm 槽接 Ollama（语义意图分类 + 关键词规则兜底）；store 槽接 SQLite（持久化、重启不丢）。
 - `fix(kernel)` StubStore 对齐 SQLiteStore 契约红线：`supersede(observed_by="ai")` 拒绝；`count()/query()` 只统计活跃记录（评审 F1/F2）。

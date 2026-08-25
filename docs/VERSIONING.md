@@ -22,6 +22,8 @@
 
 禁止为迁就 JobFirst intent 表或某个 vendor 实现倒改契约。
 
+部署后的信封时间窗、新 `signal_type` 等硬化，见 [`POST_DEPLOY_FEDERATION_HARDENING.md`](POST_DEPLOY_FEDERATION_HARDENING.md)；**上机完成前不实施**。动信封必须先改本页 Semver，再改 JSON。
+
 ## 谁评审
 
 契约变更须能回答：人还是目的吗？AI 有没有变成决策者？治理权有没有被卖掉？有结果是否仍不等于成功？
