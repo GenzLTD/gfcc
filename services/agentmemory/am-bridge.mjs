@@ -40,6 +40,34 @@ const ROUTES = {
   "/debug/state-set": "state::set",
 };
 
+// 引擎为 distroless 镜像，compose 无法对其做容器内 healthcheck（无 shell/node）。
+// 依赖链改为 service_started，由本桥在启动时轮询引擎 REST 就绪后再注册 worker，
+// 避免竞态（engine 容器已 started 但 49134/3111 尚未监听）。
+async function waitForEngine(url, timeoutMs = 60000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastErr;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(`${url}/`);
+      return;
+    } catch (e) {
+      lastErr = e;
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+  throw new Error(`engine not ready at ${url}: ${lastErr?.message}`);
+}
+
+await waitForEngine(REST_URL);
+
+// agentmemory 应用 worker（mem::* 函数 + /agentmemory/* REST 路由）由本容器代跑。
+// 引擎镜像 iiidev/iii:0.11.2（distroless，无 node）不含应用代码——官方形态是独立
+// node 进程执行 dist/index.mjs。此处动态 import 包入口（import 即 boot），它经
+// III_ENGINE_URL 连接引擎 49134，注册 worker "agentmemory" 与 mem::* 函数；
+// 其自起 REST(3111)/viewer(3113) 为容器内端口，与桥的 3220 互不冲突。
+process.env.III_ENGINE_URL = process.env.III_ENGINE_URL ?? ENGINE_URL;
+await import("@agentmemory/agentmemory");
+
 const iii = registerWorker(ENGINE_URL, {
   workerName: "am-bridge",
   invocationTimeoutMs: 180000,
