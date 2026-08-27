@@ -80,8 +80,14 @@ class MemoryAdapter:
         return PortOpResult(ok=True, id=saved["id"], data={"record": saved})
 
     def recall(self, library: Optional[str] = None, keyword: Optional[str] = None,
-               limit: int = 20) -> PortOpResult:
-        """召回：按库过滤 + 关键词模糊匹配 body。只返回未 superseded 的记录。"""
+               limit: int = 20, *, actor_sub: Optional[str] = None,
+               circle_id: Optional[str] = None) -> PortOpResult:
+        """召回：按库过滤 + 关键词模糊匹配 body。只返回未 superseded 的记录。
+
+        可见性：无 circle_id 时必须 actor_sub（对齐「每人一个 sub」私有域）。
+        """
+        if actor_sub is None and circle_id is None:
+            return PortOpResult(ok=False, error="recall requires actor_sub (private) or circle_id (circle)")
 
         def _match(rec: Dict[str, Any]) -> bool:
             if rec.get("superseded_at"):
@@ -94,13 +100,18 @@ class MemoryAdapter:
                 return keyword.lower() in rec.get("body", "").lower() or keyword in " ".join(rec.get("refs", []))
             return True
 
-        items = self._store.query(_match, limit=limit)
+        items = self._store.query(_match, limit=limit, actor_sub=actor_sub, circle_id=circle_id)
         return PortOpResult(ok=True, data={"records": items, "count": len(items)})
 
     def observe(self, record_id: str, actor_sub: str = "", observed_by: str = "human",
                 ai_source: Optional[str] = None) -> PortOpResult:
-        """标记 seen/used，不改 body。AI observe 需要 ai_source。"""
-        rec = self._store.get(record_id)
+        """标记 seen/used，不改 body。AI observe 需要 ai_source。
+
+        可见性：观察者必须能读到记录（actor_sub 与记录 owner 一致，私有域内）。
+        """
+        if not actor_sub:
+            return PortOpResult(ok=False, error="observe requires actor_sub (private)")
+        rec = self._store.get(record_id, actor_sub=actor_sub)
         if rec is None:
             return PortOpResult(ok=False, error=f"record not found: {record_id}")
         if observed_by not in ("human", "ai"):
@@ -114,8 +125,13 @@ class MemoryAdapter:
         return PortOpResult(ok=True, id=record_id, data={"record": rec})
 
     def supersede(self, record_id: str, new_body: str, actor_sub: str) -> PortOpResult:
-        """人类 steward 重写：旧记录保留 superseded_at（历史不覆盖）。"""
-        rec = self._store.get(record_id)
+        """人类 steward 重写：旧记录保留 superseded_at（历史不覆盖）。
+
+        可见性：只有记录 owner 能重写（actor_sub 与记录 owner 一致）。
+        """
+        if not actor_sub:
+            return PortOpResult(ok=False, error="supersede requires actor_sub (private)")
+        rec = self._store.get(record_id, actor_sub=actor_sub)
         if rec is None:
             return PortOpResult(ok=False, error=f"record not found: {record_id}")
         if not new_body or not new_body.strip():
@@ -136,4 +152,5 @@ class MemoryAdapter:
         return self._store.count()
 
     def list_all(self) -> List[Dict[str, Any]]:
-        return self._store.query(limit=500)
+        """管理面：列出全部活跃记录（绕过可见性，仅供调试/运维）。"""
+        return self._store.list_active(limit=500)

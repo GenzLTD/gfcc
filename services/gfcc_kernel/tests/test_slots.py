@@ -10,15 +10,16 @@ import pytest
 from gfcc_kernel.slots import SQLiteStore, StubStore
 
 
-def _record(body: str = "test body") -> dict:
-    return {"library": "issue", "body": body, "observed_by": "human", "superseded_at": None}
+def _record(body: str = "test body", actor_sub: str = "tester-a") -> dict:
+    return {"library": "issue", "body": body, "actor_sub": actor_sub,
+            "observed_by": "human", "superseded_at": None}
 
 
 class TestStubStore:
     def test_put_get_roundtrip(self):
         s = StubStore()
         rec = s.put(_record("牛奶"))
-        assert s.get(rec["id"])["body"] == "牛奶"
+        assert s.get(rec["id"], actor_sub="tester-a")["body"] == "牛奶"
 
     def test_supersede_marks_old_creates_new(self):
         s = StubStore()
@@ -27,7 +28,7 @@ class TestStubStore:
         assert new is not None
         assert new["id"] != rec["id"]
         assert new["body"] == "新内容"
-        old = s.get(rec["id"])
+        old = s.get(rec["id"], actor_sub="tester-a")
         assert old["superseded_at"] is not None  # 历史保留
         assert old["superseded_by"] == "steward-1"
 
@@ -56,17 +57,58 @@ class TestStubStore:
         r1 = s.put(_record("a"))
         s.put(_record("b"))
         s.supersede(r1["id"], {"body": "a2"}, actor_sub="steward")
-        bodies = [r["body"] for r in s.query()]
+        bodies = [r["body"] for r in s.query(actor_sub="tester-a")]
         assert "a" not in bodies
         assert "a2" in bodies  # 新记录可见
         assert "b" in bodies
+
+    def test_query_requires_visibility(self):
+        """收紧：无 circle_id 时 query 必须传 actor_sub（防全表泄漏）。"""
+        s = StubStore()
+        s.put(_record("a"))
+        with pytest.raises(ValueError, match="actor_sub"):
+            s.query()
+
+    def test_get_requires_visibility(self):
+        s = StubStore()
+        rec = s.put(_record("a"))
+        with pytest.raises(ValueError, match="actor_sub"):
+            s.get(rec["id"])
+
+    def test_query_isolated_by_actor(self):
+        """Step1 验收核心：A 的记录，B 问不到（0 条）。"""
+        s = StubStore()
+        s.put(_record("A 的机密事项", actor_sub="tester-a"))
+        s.put(_record("B 的日常", actor_sub="tester-b"))
+        assert len(s.query(actor_sub="tester-a")) == 1
+        assert s.query(actor_sub="tester-a")[0]["body"] == "A 的机密事项"
+        # B 的视角看不到 A 的记录
+        b_bodies = [r["body"] for r in s.query(actor_sub="tester-b")]
+        assert "A 的机密事项" not in b_bodies
+        assert b_bodies == ["B 的日常"]
+
+    def test_get_hides_other_actor_record(self):
+        """收紧：B 猜 A 的 id → 读不到 body（get 返回 None）。"""
+        s = StubStore()
+        rec = s.put(_record("A 的隐私", actor_sub="tester-a"))
+        assert s.get(rec["id"], actor_sub="tester-a") is not None
+        assert s.get(rec["id"], actor_sub="tester-b") is None
+
+    def test_supersede_inherits_actor_sub(self):
+        s = StubStore()
+        rec = s.put(_record("旧", actor_sub="tester-a"))
+        new = s.supersede(rec["id"], {"body": "新"}, actor_sub="tester-a")
+        assert new["actor_sub"] == "tester-a"
+        # 新记录只对 A 可见；B 仍看不到
+        assert s.get(new["id"], actor_sub="tester-a") is not None
+        assert s.get(new["id"], actor_sub="tester-b") is None
 
 
 class TestSQLiteStore:
     def test_put_get_roundtrip(self):
         s = SQLiteStore(":memory:")
         rec = s.put(_record("牛奶"))
-        assert s.get(rec["id"])["body"] == "牛奶"
+        assert s.get(rec["id"], actor_sub="tester-a")["body"] == "牛奶"
         s.close()
 
     def test_ai_cannot_supersede(self):
@@ -103,10 +145,28 @@ class TestSQLiteStore:
         s1.close()
 
         s2 = SQLiteStore(db)
-        got = s2.get(rid)
+        got = s2.get(rid, actor_sub="tester-a")
         assert got is not None
         assert got["body"] == "重启后还在"
         s2.close()
+
+    def test_query_isolated_by_actor(self):
+        """Step1 验收核心：SQLite 与 StubStore 行为一致。"""
+        s = SQLiteStore(":memory:")
+        s.put(_record("A 的机密事项", actor_sub="tester-a"))
+        s.put(_record("B 的日常", actor_sub="tester-b"))
+        assert len(s.query(actor_sub="tester-a")) == 1
+        b_bodies = [r["body"] for r in s.query(actor_sub="tester-b")]
+        assert "A 的机密事项" not in b_bodies
+        assert b_bodies == ["B 的日常"]
+        s.close()
+
+    def test_get_hides_other_actor_record(self):
+        s = SQLiteStore(":memory:")
+        rec = s.put(_record("A 的隐私", actor_sub="tester-a"))
+        assert s.get(rec["id"], actor_sub="tester-a") is not None
+        assert s.get(rec["id"], actor_sub="tester-b") is None
+        s.close()
 
 
 class TestCrossImplementationParity:
@@ -118,5 +178,15 @@ class TestCrossImplementationParity:
         stub.supersede(sr["id"], {"body": "y"}, actor_sub="u1")
         lite.supersede(lr["id"], {"body": "y"}, actor_sub="u1")
         assert stub.count() == lite.count()
-        assert [r["body"] for r in stub.query()] == [r["body"] for r in lite.query()] == ["y"]
+        assert [r["body"] for r in stub.query(actor_sub="tester-a")] == \
+               [r["body"] for r in lite.query(actor_sub="tester-a")] == ["y"]
+        lite.close()
+
+    def test_visibility_parity(self):
+        """隔离语义一致：A 的记录对 B 在两个实现中同样不可见。"""
+        stub, lite = StubStore(), SQLiteStore(":memory:")
+        for s in (stub, lite):
+            s.put(_record("私有", actor_sub="tester-a"))
+        assert stub.query(actor_sub="tester-b") == []
+        assert lite.query(actor_sub="tester-b") == []
         lite.close()

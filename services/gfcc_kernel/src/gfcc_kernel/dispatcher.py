@@ -125,6 +125,10 @@ def _execute_port(port: str, ctx: KernelContext, request: AskRequest) -> Dict[st
         return _wrap(r, "identity")
 
     if port == "memory":
+        sub = ctx.policy.sub if ctx.policy else None
+        if not sub:
+            # 红线：没有 sub 不落到 "system"（Step1 按人隔离）
+            return {"status": "error", "error": "principal sub missing"}
         if re.search(r"记住|记下|remember|写入|记录", m):
             # 提取正文（去掉操作词）
             body = _strip_action_prefix(msg, ["记住", "记下", "记录", "remember", "write"])
@@ -133,11 +137,11 @@ def _execute_port(port: str, ctx: KernelContext, request: AskRequest) -> Dict[st
             r = adapter.remember(
                 library=_infer_library(m, request.context),
                 body=body,
-                actor_sub=ctx.policy.sub if ctx.policy else "system",
+                actor_sub=sub,
                 circle_id=circle_id,
             )
             return _wrap(r, "memory")
-        r = adapter.recall(keyword=_infer_keyword(msg))
+        r = adapter.recall(keyword=_infer_keyword(msg), actor_sub=sub, circle_id=circle_id)
         return _wrap(r, "memory")
 
     if port == "consensus":

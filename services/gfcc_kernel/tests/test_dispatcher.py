@@ -49,11 +49,19 @@ class TestParsePort:
         assert conf == 0.0
 
 
+class _FakePolicy:
+    """最小 fake：模拟已 bind 的 KernelPolicy（Step1 每人一个 sub）。"""
+
+    def __init__(self, sub: str = "tester-a") -> None:
+        self.sub = sub
+        self.ctx = None
+
+
 class TestParseThenDispatch:
-    def _ctx(self):
+    def _ctx(self, sub: str = "tester-a"):
         return PortRegistry().build_context(
             session_id="s-test", circle_id=None,
-            dialog_mode="collaboration", policy=None, llm=None,
+            dialog_mode="collaboration", policy=_FakePolicy(sub), llm=None,
         )
 
     def test_unknown_returns_suggestions(self):

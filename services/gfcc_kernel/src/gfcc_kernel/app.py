@@ -92,7 +92,11 @@ async def health() -> Dict[str, Any]:
 # --------------------------------------------------------------------------- #
 
 def _verify_request(request: Request) -> None:
-    """ethos 认证：Bearer token → AuthContext；未认证 401。"""
+    """ethos 认证：Bearer token → AuthContext；未认证 401。
+
+    HS256 模式下 verify 失败不抛异常（ctx.error / principal=None）→ 必须显式 401。
+    stub 模式（无 ETHOS_AUTH_SECRET）下空 token 返回 stub-anon 主体，仅本地联调用。
+    """
     auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         token = auth[7:].strip()
@@ -102,6 +106,11 @@ def _verify_request(request: Request) -> None:
         ctx = _security.verify(token)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=401, detail=f"unauthorized: {exc}") from exc
+    if getattr(ctx, "error", None) or getattr(ctx, "principal", None) is None:
+        raise HTTPException(
+            status_code=401,
+            detail=f"unauthorized: {getattr(ctx, 'error', None) or 'missing valid principal'}",
+        )
     _policy.bind(ctx)
 
 

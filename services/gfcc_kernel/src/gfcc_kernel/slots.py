@@ -208,14 +208,39 @@ class StubStore:
             self._records[rid] = record
         return record
 
-    def get(self, rid: str) -> Optional[Dict[str, Any]]:
+    def get(self, rid: str, *, actor_sub: Optional[str] = None,
+            circle_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """带可见性读取：无 circle_id 时必须 actor_sub（防跨人猜 id 读 body）。
+
+        对齐「每人一个 sub」：B 猜 A 的 id → 记录 actor_sub 不匹配 → 返回 None。
+        """
+        if actor_sub is None and circle_id is None:
+            raise ValueError("get requires actor_sub (private) or circle_id (circle)")
         with self._lock:
             rec = self._records.get(rid)
-            return dict(rec) if rec else None
+        if rec is None:
+            return None
+        if actor_sub is not None and rec.get("actor_sub") != actor_sub:
+            return None
+        if circle_id is not None and rec.get("circle_id") != circle_id:
+            return None
+        return dict(rec)
 
-    def query(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def query(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None,
+              limit: int = 50, *, actor_sub: Optional[str] = None,
+              circle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """带可见性查询：无 circle_id 时必须 actor_sub（防全表泄漏）。
+
+        对齐「无 circle_id 时必须 actor_sub = policy.sub」；circle_id 留给 Step 4 圈内共享。
+        """
+        if actor_sub is None and circle_id is None:
+            raise ValueError("query requires actor_sub (private) or circle_id (circle)")
         with self._lock:
             items = [r for r in self._records.values() if not r.get("superseded_at")]
+        if actor_sub is not None:
+            items = [r for r in items if r.get("actor_sub") == actor_sub]
+        if circle_id is not None:
+            items = [r for r in items if r.get("circle_id") == circle_id]
         if filter_fn:
             items = [dict(r) for r in items if filter_fn(r)]
         return items[:limit]
@@ -245,6 +270,12 @@ class StubStore:
         """只统计活跃记录（superseded_at 为空），与 SQLiteStore 语义对齐。"""
         with self._lock:
             return sum(1 for r in self._records.values() if not r.get("superseded_at"))
+
+    def list_active(self, limit: int = 500) -> List[Dict[str, Any]]:
+        """管理面：列出全部活跃记录（绕过可见性强制，仅供调试/运维）。"""
+        with self._lock:
+            items = [r for r in self._records.values() if not r.get("superseded_at")]
+        return [dict(r) for r in items[:limit]]
 
     # ------------------------------------------------------------------ #
     # signal_log（Step3 W2）：幂等键 (signal_type, user_id_hash, nonce)
@@ -360,7 +391,11 @@ class SQLiteStore:
             self._conn.commit()
         return rec
 
-    def get(self, rid: str) -> Optional[Dict[str, Any]]:
+    def get(self, rid: str, *, actor_sub: Optional[str] = None,
+            circle_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """带可见性读取：无 circle_id 时必须 actor_sub（与 StubStore 行为一致）。"""
+        if actor_sub is None and circle_id is None:
+            raise ValueError("get requires actor_sub (private) or circle_id (circle)")
         with self._lock:
             cur = self._conn.execute(
                 "SELECT body FROM memory_records WHERE id = ?", (rid,)
@@ -368,14 +403,28 @@ class SQLiteStore:
             row = cur.fetchone()
         if row is None:
             return None
-        return json.loads(row[0])
+        rec = json.loads(row[0])
+        if actor_sub is not None and rec.get("actor_sub") != actor_sub:
+            return None
+        if circle_id is not None and rec.get("circle_id") != circle_id:
+            return None
+        return rec
 
-    def query(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None, limit: int = 50) -> List[Dict[str, Any]]:
+    def query(self, filter_fn: Optional[Callable[[Dict[str, Any]], bool]] = None,
+              limit: int = 50, *, actor_sub: Optional[str] = None,
+              circle_id: Optional[str] = None) -> List[Dict[str, Any]]:
+        """带可见性查询：无 circle_id 时必须 actor_sub（与 StubStore 行为一致）。"""
+        if actor_sub is None and circle_id is None:
+            raise ValueError("query requires actor_sub (private) or circle_id (circle)")
         with self._lock:
             rows = self._conn.execute(
                 "SELECT body FROM memory_records WHERE superseded_at IS NULL"
             ).fetchall()
         items = [json.loads(r[0]) for r in rows]
+        if actor_sub is not None:
+            items = [r for r in items if r.get("actor_sub") == actor_sub]
+        if circle_id is not None:
+            items = [r for r in items if r.get("circle_id") == circle_id]
         if filter_fn:
             items = [r for r in items if filter_fn(r)]
         return items[:limit]
@@ -432,6 +481,15 @@ class SQLiteStore:
                 "SELECT COUNT(*) FROM memory_records WHERE superseded_at IS NULL"
             )
             return int(cur.fetchone()[0])
+
+    def list_active(self, limit: int = 500) -> List[Dict[str, Any]]:
+        """管理面：列出全部活跃记录（绕过可见性强制，仅供调试/运维）。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT body FROM memory_records WHERE superseded_at IS NULL LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [json.loads(r[0]) for r in rows]
 
     # ------------------------------------------------------------------ #
     # signal_log（Step3 W2）：幂等键 (signal_type, user_id_hash, nonce)
