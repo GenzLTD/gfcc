@@ -2,6 +2,7 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `feat(kernel)` Step 1 记忆体按人隔离（2026-08-27）：`query`/`get`/`recall` 必带 `actor_sub`；无 sub 不落 `"system"`；HS256 无 token / 坏 token → 401。签发脚本 `scripts/issue_persona_tokens.py`。验收见 [`docs/reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md`](reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md)。运行树 `~/Projects/gfcc`。
 - `docs` 2026-08-27 按现况修订：[`VERSIONING.md`](VERSIONING.md)（P3 已完、硬化可排期、实现债≠契约 bump、ack 不得被录像代替）；testers 须知 / MVP 内测手册（会场 ≠ PlanetX；令牌 ≠ Tatha 演示桩；验证 = 人↔sub↔id）；MVP 清单 G6 写明圈/共识仍内存；联邦方案标题与 §8.4 边界 2 关闭 P3；硬化 R4 与 L5 对账。
 - `docs` 环 2 信号段通过（2026-08-26 夜）：天翼 `signal_log` 3 行 `consensus_match`（nonce 已记）；G3 双信号云上复现完成。见 [`docs/联邦测试闭环方案.md`](联邦测试闭环方案.md) §8.5。下一层 P3（已于 2026-08-27 归档）；不合 `main`。
 - `docs` **P3 终端切流全部完成并归档（2026-08-27）**：A 浏览器验收 / B 阿里 API 指向迁移天翼 / C Vultr 空钥匙确认 / D 入口文案统一。腾讯原地冻结冷备、入口唯一 = 天翼 `http://14.29.216.219/`。施工单 [`P3_终端机施工单.md`](P3_终端机施工单.md) 已标注已归档。
