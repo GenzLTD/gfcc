@@ -3,8 +3,8 @@
 > **地位**：产品 MVP（vision 五条判据）开工门禁，**不是**工程联调清单。  
 > **对照**：[vision.md](vision.md) 五条成功判据 · [roles.v1.json](../contracts/roles.v1.json) · [consensus.v1.json](../contracts/consensus.v1.json) · [contribution.v1.json](../contracts/contribution.v1.json) · [G3 真端对接验收](reviews/G3_真端对接验收_2026-08-24.md)  
 > **纪律**：G3 只证明管道通。MVP 内测必须让一个**真共同体**走完共议与兑现。本地双机互打、开发号互 ack、管理员拨角色，**一律不算内测开始**。  
-> **状态（2026-08-24）**：清单已起草，**真实评估未做 → 不具备开工条件**。  
-> **联邦硬化（另一条线）**：单机部署后的发件箱 / 密钥轮换等见 [`POST_DEPLOY_FEDERATION_HARDENING.md`](POST_DEPLOY_FEDERATION_HARDENING.md)，**不替代本页 G6，也不在部署完成前开工**。
+> **状态（2026-08-26；08-27 更新）**：清单已起草，**真实评估未做 → 不具备开工条件**。工程侧：局域网 G3（08-24）+ 天翼云双信号复现（08-26，[联邦方案 §8.5](联邦测试闭环方案.md)）+ P3 终端切流归档（08-27）已过；**不替代本页人齐门禁**。  
+> **联邦硬化（另一条线）**：单机部署后的发件箱 / 密钥轮换等见 [`POST_DEPLOY_FEDERATION_HARDENING.md`](POST_DEPLOY_FEDERATION_HARDENING.md)，**不替代本页 G6**。部署已完成（2026-08-27 P3 归档），硬化项可排期实施。
 
 ---
 
@@ -14,13 +14,13 @@
 
 | # | 条件 | 评估（是/否） | 证据 / 备注 |
 |---|------|---------------|-------------|
-| G0 | 工程 G3 已通过（5211 真信号落库） | 是（2026-08-24） | [G3 验收](reviews/G3_真端对接验收_2026-08-24.md) |
+| G0 | 工程 G3 已通过（5211 真信号落库） | 是（2026-08-24 局域网；2026-08-26 天翼云复现；P3 入口已切天翼） | [G3 验收](reviews/G3_真端对接验收_2026-08-24.md) · [联邦方案 §8.5](联邦测试闭环方案.md) · [P3 施工单](P3_终端机施工单.md) |
 | G1 | 已指定**一个**真实 circle 名称与议题（不是「测试圈」空转） | | |
 | G2 | 下表席位 A/B/C 已有**具名真人**承诺参加一场同步（不是开发账号） | | |
 | G3 | 三人理解：ack 必须本人点；AI 不能代 ack；不能只为自己认定贡献 | | |
 | G4 | 升级路径书面约定：C 从旁观升参与须带 Dual/CoCo 证据，禁止只拨 admin | | |
 | G5 | 本场阈值已写下（默认 85 或 circle 自定），并约定 AI 证据不得作为唯一依据 | | |
-| G6 | 内核侧：circle / consensus / contribution 端口能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测 | | |
+| G6 | 内核侧：circle / consensus / contribution 能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测。**现况（2026-08-27）**：端口 API 在；圈/共识/身份仍内存，重启丢围坐态；`signal_log`/`memory_records` 已 sqlite。未解决持久化前，系统内测必须当场抄 id，否则只算桌面演练 | | |
 
 **评估结论**：□ 具备条件，可以开始　□ 不具备，继续等席位/议题  
 **评估人 / 日期**：________________
@@ -74,12 +74,12 @@ G3 已满足「管道通」。下列是 **circle 剧本能跑完** 才需要的�
 
 | 项 | 最低要求 | 评估 |
 |----|----------|------|
-| circle 端口 | 能 create / join；成员 role 可解析 | |
-| consensus 端口 | propose → 带 `score_evidence` 的 score → 全员 ack → `consensus_verified`；`consensus_math` 若用只进证据，**不能**跳过 ack | |
+| circle 端口 | 能 create / join；成员 role 可解析。现实现：内存，重启丢 | |
+| consensus 端口 | propose → 带 `score_evidence` 的 score → 全员 ack → `consensus_verified`；`consensus_math` 若用只进证据，**不能**跳过 ack。现实现：内存；录像/转写不得代替 ack | |
 | contribution 端口 | 他认 attest + steward fulfill；拒绝「只为自己认定」 | |
-| memory 端口 | 议题/行动可 `refs` 指向上一场共识或记忆（判据 1） | |
-| identity | fulfill 后 `capability_trace` 可查；C 升级有证据记录 | |
-| 密钥 | 内测不用长期沿用联调 `dev-signal-secret-*`（G1 已声明上线前更换） | |
+| memory 端口 | 议题/行动可 `refs` 指向上一场共识或记忆（判据 1）。`memory_records` 已 sqlite | |
+| identity | fulfill 后 `capability_trace` 可查；C 升级有证据记录。**Tatha `demo-token-*` 不算围坐身份**；每人一张主持人发放的令牌，`sub` 对报名表 | |
+| 密钥 | 天翼 ingest 已换内测值（联邦 L5，≠ ETHOS、≠ 联调 `dev-signal-secret-*`）。双活轮换仍见硬化 R4，不挡本页人齐 | |
 
 未勾完 **G6 + 本节**，即使人齐了也只做桌面演练，不开系统内测。
 
@@ -101,7 +101,7 @@ G3 已满足「管道通」。下列是 **circle 剧本能跑完** 才需要的�
 
 ## 5. 内测通过口径（给人看，不是给 CI 看）
 
-场次结束后，五条都要能指出**库里的 id**，否则本场失败、不算 MVP 内测通过。
+场次结束后，五条都要能指出**库里的 id**（人 ↔ `sub` ↔ 记录），否则本场失败、不算 MVP 内测通过。不回放腾讯会议验收。圈/共识若仍在内存，**散会前抄 id**。
 
 | 判据 | 本场最低证据 |
 |------|----------------|

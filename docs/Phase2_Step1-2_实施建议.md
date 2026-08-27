@@ -1,5 +1,7 @@
 # Step 1-2 实施建议 — llm 槽接 Ollama + store 槽切 SQLite
 
+> **状态：已收口**——Step1-2 已实施完成（llm 槽接 Ollama、store 槽接 SQLite 均已上线，见 CHANGELOG），本文为历史实施建议。  
+> **2026-08-27 对照**：sqlite 持久化的是 `memory_records` 与 `signal_log`；circle / consensus / identity / session 仍内存，勿把「store 已切 SQLite」读成围坐态重启不丢。
 > 致：Windows 端项目组
 > 来自：Mac 侧（契约对齐 + 信号层设计）
 > 日期：2026-08-20

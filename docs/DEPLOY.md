@@ -18,7 +18,10 @@
 > uvicorn gfcc_kernel.app:app --host 0.0.0.0 --port 5211
 > curl http://localhost:5211/health   # {"service":"gfcc_kernel","version":"1.1.0",...}
 > ```
+> 天翼现网（2026-08-26 核实；08-27 P3 入口已切）：systemd `gfcc-kernel.service`，工作目录 **`/data/gfcc/services/gfcc_kernel`**，venv 内 uvicorn 听 `0.0.0.0:5211`（安全组不放行）。人网唯一入口 `http://14.29.216.219/`。查库用 `./.venv/bin/python scripts/query_signal_log.py`，不要系统 `python`。联邦闭环见 [`docs/联邦测试闭环方案.md`](联邦测试闭环方案.md)。
+> `SIGNAL_INGEST_SECRET` 天翼为内测值（与 Looma 出站同一把，≠ `ETHOS_AUTH_SECRET`，禁止留空免签上云）。
 > 槽位由环境变量装配：`LLM_PROVIDER`（stub/ollama）、`STORE_PROVIDER`（stub/sqlite）、`STORE_DB_PATH`、`OLLAMA_MODEL`、`OLLAMA_BASE_URL`、`CONSENSUS_THRESHOLD`（默认 85），详见 `.env.example`。
+> **持久化现况**：sqlite 保存 `memory_records` 与 `signal_log`；circle / consensus / identity / session **仍在内存**，重启丢围坐态。契约版本见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 2. 前置条件
 
@@ -103,7 +106,7 @@ docker compose up -d
 
 | 流水线 | 触发 | 行为 |
 |---|---|---|
-| `ci.yml` | push main / PR | test-libs（ethos/tenet 单测 + tatha/gateway import）→ test-kernel（内核 52 项）→ test-contracts（契约 JSON 校验）→ 构建并推送四镜像到 GHCR |
+| `ci.yml` | push main / PR | test-libs（ethos/tenet 单测 + tatha/gateway import）→ test-kernel（内核单测，含信号项；以 CI 现数为准）→ test-contracts（契约 JSON + 分家族版本）→ 构建并推送四镜像到 GHCR |
 | `deploy.yml` | 手动 / tag `v*` | SCP 上传仓库 → SSH `compose pull && up` |
 
 deploy.yml 所需 GitHub Secrets：
@@ -118,7 +121,8 @@ deploy.yml 所需 GitHub Secrets：
 ## 8. 安全清单
 
 - [ ] `ETHOS_AUTH_SECRET` 使用强随机值且三端一致（tatha / demopeter / am-gateway）
-- [ ] 对外仅暴露 5210 / 5220 / 3210，引擎 3111/49134 不映射宿主
+- [ ] 对外人网走 Nginx 80/443；引擎 3111/49134 不映射宿主。Tatha 5210 / DemoPeter 5220 / 网关 3210 现网仍对公网探活（P4 烟测），**不是**围坐入口
+- [ ] 中央机入驻产品栈时：Nginx 人网用 **80/443**（安全组另开）；Looma `:5200` 与 `gfcc_kernel :5211` 只绑回环；**不要**把 `/v1` 反代到 Tatha 5210。端口全表见 [`联邦测试闭环方案.md`](联邦测试闭环方案.md) §3.4
 - [ ] `.env` 不入库（.gitignore 已处理）
 - [ ] 审计库：am-gateway 落 `/data/ethos_audit.db`，Tatha 落 `logs/audit.db`（均持久卷）
 - [ ] 建议前置反向代理（Caddy/Nginx）终结 TLS 后再对外

@@ -24,11 +24,11 @@ Gitee 没有可用的 Actions CI。为了让每次提交都有自动化验证（
 | Job | 内容 | 意义 |
 |---|---|---|
 | `test-libs` | ethos / tenet 单元测试 + tatha / gateway import 检查 | 共享内核回归 |
-| `test-kernel` | gfcc_kernel 52 项测试（信封严格性 / 端口解析 / store 槽红线 / consensus 状态机） | 格契内核契约红线 |
-| `test-contracts` | `contracts/*.json` 合法性 + 8 份契约版本号一致性 | **G1 冻结后防字段漂移的关键闸门** |
+| `test-kernel` | gfcc_kernel 单测（信封 / 端口 / store 红线 / consensus 状态机 / 信号 ingest；项数以 CI 为准，CHANGELOG 曾记 98） | 格契内核契约红线 |
+| `test-contracts` | `contracts/*.json` 合法性 + **分家族**版本号（Ask/五端口 1.1.0；信号信封+两种 payload 1.0.0） | **G1 冻结后防字段漂移的关键闸门** |
 | `build-images` | 构建并推送 4 个 Docker 镜像到 GHCR（仅 main 触发） | 产出双方统一的构建产物 |
 
-当前基线：四 job 全绿（run #5，约 5 分半）。
+首次全绿基线：run #5（约 5 分半，当时 kernel 52 项）。之后已加信号家族与更多单测；以当前 Actions 为准。契约冻结线见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 3. 你的使用方法
 

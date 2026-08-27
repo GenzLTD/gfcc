@@ -1,5 +1,6 @@
 # Phase2 Step3 · Windows 侧开工清单
 
+> **状态：已收口（2026-08-24 G3 通过）**——W1–W4 已全部交付（`/v1/signal-ingest` + `signal_log` + 端口路由 + mock 发送器，98 项测试全绿），G1 契约已冻结、G3 真端对接已通过。本文为历史动员记录，不再有未执行动作。
 > **致**：Windows 端 gfcc_kernel 实施方（W1-W4）
 > **写**：评审/基建方（Windows，2026-08-21）
 > **依据**：[`Phase2_Step3_信号契约与协调方案.md`](Phase2_Step3_信号契约与协调方案.md)（Mac 侧起草）· [`GITHUB_MIRROR.md`](GITHUB_MIRROR.md) · [`DEPLOY.md`](DEPLOY.md)

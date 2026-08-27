@@ -1,5 +1,6 @@
 # Phase2 Step3 — 信号契约与多方协调方案
 
+> **状态：已收口（2026-08-24 G3 通过）**——G1 契约冻结 → G2 mock 并行 → G3 真端对接全部完成，DoD 六条全勾选（见第九节）。本文为契约定稿 + 历史协调记录，不再有未执行动作。
 > **文档定位**：Step3（THOMAS ↔ GFCC 信号层对接）的契约草案 + 双团队分工协调方案
 > **读者**：Mac 侧（Jason：THOMAS 三仓 + 契约起草）、Windows 侧（gfcc_kernel 实施）
 > **前置状态**：Step1-2 已验收（llm→Ollama 语义分类、store→SQLite 持久化）；SurfaceZervi L1-L5 已验收（信封+HMAC+幂等样板）
