@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>GFCC 围坐会场</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --ink: #1f2329;
+    --muted: #8a919c;
+    --line: #e5e8ec;
+    --brand: #2f6bff;
+    --brand-soft: #eaf0ff;
+    --ok: #18a058;
+    --ok-soft: #e8f7ef;
+    --warn: #d97706;
+    --warn-soft: #fdf3e3;
+    --err: #d03050;
+    --err-soft: #fdecef;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.5;
+    padding-bottom: 48px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    background: #fff; border-bottom: 1px solid var(--line);
+    padding: 12px 16px;
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  header h1 { font-size: 17px; font-weight: 700; }
+  #who { font-size: 13px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42vw; }
+  #btn-leave { font-size: 12px; padding: 6px 12px; border: 1px solid var(--line); border-radius: 999px; background: #fff; color: var(--muted); cursor: pointer; }
+  #btn-leave:hover { color: var(--err); border-color: var(--err); }
+  main { max-width: 640px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  .card h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .step { font-size: 12px; color: #fff; background: var(--brand); border-radius: 999px; padding: 1px 8px; font-weight: 600; }
+  .desc { font-size: 13px; color: var(--muted); margin-bottom: 10px; }
+  label { display: block; font-size: 13px; margin: 8px 0 4px; color: var(--ink); }
+  input, textarea {
+    width: 100%; padding: 10px 12px; font-size: 15px;
+    border: 1px solid var(--line); border-radius: 10px; background: #fafbfc;
+    font-family: inherit; color: var(--ink);
+  }
+  input:focus, textarea:focus { outline: 2px solid var(--brand-soft); border-color: var(--brand); background: #fff; }
+  textarea { min-height: 72px; resize: vertical; }
+  button {
+    width: 100%; margin-top: 10px; padding: 12px; font-size: 15px; font-weight: 600;
+    border: none; border-radius: 10px; cursor: pointer;
+    background: var(--brand); color: #fff;
+  }
+  button:disabled { background: #c6cdd8; cursor: not-allowed; }
+  button.ghost { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
+  button.ghost:disabled { color: #c6cdd8; border-color: var(--line); }
+  button.ok { background: var(--ok); }
+  .hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
+  .row { display: flex; gap: 10px; }
+  .row > div { flex: 1; }
+  .muted { color: var(--muted); }
+  .pill {
+    display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px;
+    background: #f0f2f5; color: #4b5563; margin: 2px 4px 2px 0;
+  }
+  .pill.me { background: var(--brand-soft); color: var(--brand); }
+  .pill.org { background: var(--warn-soft); color: var(--warn); }
+  .banner {
+    border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 10px; display: none;
+  }
+  .banner.ok { display: block; background: var(--ok-soft); color: var(--ok); }
+  .banner.warn { display: block; background: var(--warn-soft); color: var(--warn); }
+  .banner.err { display: block; background: var(--err-soft); color: var(--err); }
+  .banner.note { display: block; background: #f2f4f8; color: var(--muted); }
+  .proposal {
+    border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-top: 10px; background: #fafbfc;
+  }
+  .proposal .subject { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .progress {
+    display: flex; align-items: center; gap: 8px; margin: 6px 0;
+    font-size: 14px; font-weight: 700;
+  }
+  .progress .bar { flex: 1; height: 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+  .progress .bar > i { display: block; height: 100%; background: var(--ok); border-radius: 999px; }
+  .status-tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; display: inline-block; margin-left: 6px; }
+  .status-tag.verified { background: var(--ok-soft); color: var(--ok); }
+  .status-tag.waiting { background: var(--warn-soft); color: var(--warn); }
+  .status-tag.done { background: var(--brand-soft); color: var(--brand); }
+  .who-line { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .big-cid {
+    font-size: 13px; color: var(--brand); word-break: break-all;
+    background: var(--brand-soft); border-radius: 10px; padding: 10px 12px; margin-top: 10px;
+    user-select: all; line-height: 1.7;
+  }
+  footer { text-align: center; font-size: 12px; color: var(--muted); padding: 16px 16px 0; }
+  .hidden { display: none; }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>围坐会场</h1>
+  <div style="display:flex;align-items:center;gap:8px;">
+    <div id="who">未入场</div>
+    <button id="btn-leave" class="hidden">退出</button>
+  </div>
+</header>
+
+<main>
+  <!-- 1 入场 -->
+  <section class="card" id="card-entry">
+    <h2><span class="step">1</span>入场</h2>
+    <div class="desc">粘贴主持人发给你的入场令牌。这把令牌就是你本人，请勿转发给任何人。</div>
+    <label for="token">入场令牌</label>
+    <input id="token" type="password" autocomplete="off" placeholder="粘贴 JWT 令牌">
+    <button id="btn-entry">入场</button>
+    <div class="banner" id="entry-msg"></div>
+  </section>
+
+  <!-- 2 席位 -->
+  <section class="card hidden" id="card-seat">
+    <h2><span class="step">2</span>席位</h2>
+    <div class="desc">主持人 A：建圈并分享链接。参与者 B：入座参与确认。旁观 C：先只看，不入座。</div>
+    <div class="row">
+      <div>
+        <div class="desc">我是组织者 A：写一个真议题名建圈，把链接发给大家。</div>
+        <label for="circle-name">议题名</label>
+        <input id="circle-name" placeholder="写一个真议题名（例：周五前完成内存隔离验收）">
+        <button id="btn-create">建圈</button>
+      </div>
+      <div>
+        <div class="desc">我是 B / C：链接里已带圈号，或手动粘贴圈号。</div>
+        <label for="circle-id">圈号</label>
+        <input id="circle-id" type="text" autocomplete="off" placeholder="链接已带时无需填写">
+        <button id="btn-join" class="ghost">入座 · 参与确认</button>
+        <button id="btn-observe" class="ghost">只旁观 · 先只看</button>
+      </div>
+    </div>
+    <div class="banner" id="seat-msg"></div>
+    <div id="my-circle" class="hidden">
+      <div class="desc" style="margin-top:10px;">把这条链接发到群里（已带圈号）：</div>
+      <div class="big-cid" id="my-circle-link"></div>
+    </div>
+  </section>
+
+  <!-- 3 拍板句（仅 A，已入座时可见） -->
+  <section class="card hidden" id="card-propose">
+    <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">组织者</span></h2>
+    <div class="desc">组织者写一句要大家一起拍板的话，再给一句话依据。每人各自确认后即达成。</div>
+    <label for="subject">拍板句</label>
+    <textarea id="subject" placeholder="写一个真议题，而不是测试句（例：本周按 W4 节奏推进，周五前完成验收）"></textarea>
+    <label for="basis">依据（一句话，可选）</label>
+    <input id="basis" type="text" placeholder="为什么现在要拍这句">
+    <button id="btn-propose">提交拍板句</button>
+    <div class="hint">提交后状态进入「等待确认」，每位参与者会看到自己的确认按钮。</div>
+    <div class="banner" id="propose-msg"></div>
+  </section>
+
+  <!-- 4 状态 -->
+  <section class="card hidden" id="card-status">
+    <h2>圈状态</h2>
+    <div id="status-body">载入中…</div>
+    <div class="banner note" id="scope-note">本场只验「本人点确认」。引用上一条与认定/兑现，下一场再做。</div>
+  </section>
+
+  <footer>GFCC 围坐会场 · 令牌仅用于本次测评，退出即失效</footer>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var API = "";
+  var state = {
+    token: sessionStorage.getItem("gfcc_circle_token") || "",
+    circleId: sessionStorage.getItem("gfcc_circle_id") || "",
+    sub: "",
+    polling: null,
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  function show(msgEl, kind, text) {
+    msgEl.className = "banner " + (kind || "err");
+    msgEl.textContent = text;
+  }
+  function hideEl(el) { el.classList.add("hidden"); }
+  function showEl(el) { el.classList.remove("hidden"); }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function short(s) { return s.length > 12 ? s.slice(0, 12) + "…" : s; }
+
+  function api(path, method, body) {
+    var opts = { method: method || "GET", headers: {} };
+    if (state.token) opts.headers["Authorization"] = "Bearer " + state.token;
+    if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    return fetch(API + path, opts).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) { var e = new Error(j.detail || (r.status + " " + r.statusText)); e.status = r.status; throw e; }
+        return j;
+      });
+    });
+  }
+
+  // ---------- 入场 ----------
+  $("btn-entry").addEventListener("click", enter);
+  function enter() {
+    var t = $("token").value.trim();
+    if (!t) { show($("entry-msg"), "err", "请先粘贴入场令牌"); return; }
+    state.token = t;
+    sessionStorage.setItem("gfcc_circle_token", t);
+    api("/circle/api/me").then(function (j) {
+      state.sub = j.sub;
+      sessionStorage.setItem("gfcc_circle_sub", j.sub);
+      $("who").textContent = "已入场：" + short(j.sub);
+      showEl($("btn-leave"));
+      hideEl($("card-entry"));
+      show($("entry-msg"), "ok", "入场成功：" + j.sub + "。令牌是你本人的钥匙，不要转发。");
+      showEl($("card-seat"));
+      var cidFromUrl = new URLSearchParams(location.search).get("c");
+      if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
+      if (state.circleId) { $("circle-id").value = state.circleId; }
+    }).catch(function (e) { show($("entry-msg"), "err", "入场失败：" + e.message); });
+  }
+
+  // ---------- 退出 ----------
+  $("btn-leave").addEventListener("click", function () {
+    sessionStorage.removeItem("gfcc_circle_token");
+    sessionStorage.removeItem("gfcc_circle_id");
+    sessionStorage.removeItem("gfcc_circle_sub");
+    location.reload();
+  });
+
+  // ---------- 建圈 ----------
+  $("btn-create").addEventListener("click", function () {
+    var name = $("circle-name").value.trim();
+    if (!name || name === "围坐") { show($("seat-msg"), "err", "写一个真议题名，别空转"); return; }
+    api("/circle/api/create", "POST", { name: name }).then(function (j) {
+      state.circleId = j.circle_id;
+      sessionStorage.setItem("gfcc_circle_id", j.circle_id);
+      var link = location.origin + location.pathname + "?c=" + j.circle_id;
+      $("my-circle-link").textContent = link;
+      showEl($("my-circle"));
+      show($("seat-msg"), "ok", "建圈成功。把上面的链接发到群里。");
+      enterCircle(j.circle_id);
+    }).catch(function (e) { show($("seat-msg"), "err", "建圈失败：" + e.message); });
+  });
+
+  // ---------- 入座（B） ----------
+  $("btn-join").addEventListener("click", function () {
+    var cid = $("circle-id").value.trim();
+    if (!cid) { show($("seat-msg"), "err", "请先填写圈号（或打开 A 发的链接）"); return; }
+    state.circleId = cid;
+    sessionStorage.setItem("gfcc_circle_id", cid);
+    api("/circle/api/join", "POST", { circle_id: cid }).then(function () {
+      show($("seat-msg"), "ok", "已入座，等待组织者提交拍板句后确认");
+      enterCircle(cid);
+    }).catch(function (e) { show($("seat-msg"), "err", "入座失败：" + e.message); });
+  });
+
+  // ---------- 只旁观（C，不入座） ----------
+  $("btn-observe").addEventListener("click", function () {
+    var cid = $("circle-id").value.trim();
+    if (!cid) { show($("seat-msg"), "err", "请先填写圈号（或打开 A 发的链接）"); return; }
+    state.circleId = cid;
+    sessionStorage.setItem("gfcc_circle_id", cid);
+    show($("seat-msg"), "ok", "已旁观（未入座）。你只能看，不能确认。");
+    enterCircle(cid);
+  });
+
+  // ---------- 进入圈子 ----------
+  function enterCircle(cid) {
+    hideEl($("card-seat"));
+    showEl($("card-status"));
+    refresh();
+    if (state.polling) clearInterval(state.polling);
+    state.polling = setInterval(refresh, 3000);
+  }
+
+  // ---------- 写拍板句（A） ----------
+  $("btn-propose").addEventListener("click", function () {
+    var subject = $("subject").value.trim();
+    if (!subject) { show($("propose-msg"), "err", "先写拍板句"); return; }
+    api("/circle/api/propose", "POST", {
+      circle_id: state.circleId, subject: subject, basis: $("basis").value.trim(),
+    }).then(function () {
+      show($("propose-msg"), "ok", "拍板句已提交，等待全员本人点确认");
+      refresh();
+    }).catch(function (e) { show($("propose-msg"), "err", "提交失败：" + e.message); });
+  });
+
+  // ---------- 状态渲染 ----------
+  function refresh() {
+    if (!state.circleId) return;
+    api("/circle/api/status?circle_id=" + encodeURIComponent(state.circleId)).then(function (j) {
+      render(j);
+    }).catch(function (e) {
+      $("status-body").innerHTML = "<div class='banner err'>状态刷新失败：" + esc(e.message) + "</div>";
+    });
+  }
+
+  function render(j) {
+    var circle = j.circle, proposals = j.proposals || [];
+    var members = circle.members || [];
+    var me = state.sub;
+    var myRole = null;
+    members.forEach(function (m) { if (m.sub === me) myRole = m.role; });
+    var isOrg = myRole === "organizer";
+
+    // 拍板卡片：仅组织者且已入座可见
+    if (isOrg && !proposals.some(function (p) { return p.status !== "consensus_verified"; })) {
+      showEl($("card-propose"));
+    } else {
+      hideEl($("card-propose"));
+    }
+
+    var html = "";
+    html += "<div style='font-size:13px;color:var(--muted);margin-bottom:8px;'>议题 <b style='color:var(--ink)'>" + esc(circle.name) + "</b> · 已入座 " + members.length + " 人 · " + esc(circle.status) + "</div>";
+    html += "<div style='margin-bottom:4px;'>成员：</div>";
+    members.forEach(function (m) {
+      var cls = "pill" + (m.sub === me ? " me" : "") + (m.role === "organizer" ? " org" : "");
+      html += "<span class='" + cls + "'>" + esc(short(m.sub)) + (m.role === "organizer" ? " · A" : "") + "</span>";
+    });
+
+    if (!proposals.length) {
+      html += "<div class='banner warn' style='display:block;'>还没有拍板句，等组织者提交。</div>";
+    } else {
+      proposals.forEach(function (p) {
+        var acks = p.acks || [], parties = p.parties || [];
+        var verified = p.status === "consensus_verified";
+        var myAcked = acks.some(function (a) { return a.sub === me; });
+        var iAmParty = parties.indexOf(me) >= 0;
+        var tag = verified
+          ? "<span class='status-tag verified'>已达成</span>"
+          : "<span class='status-tag waiting'>等待确认</span>";
+        var pct = parties.length ? Math.round(acks.length / parties.length * 100) : 0;
+        html += "<div class='proposal'>";
+        html += "<div class='subject'>" + esc(p.subject) + tag + "</div>";
+        html += "<div class='progress'>已确认 " + acks.length + "/" + parties.length +
+                "<span class='bar'><i style='width:" + pct + "%'></i></span></div>";
+        html += "<div class='who-line'>需确认：" + parties.map(function (s) { return esc(short(s)); }).join("、") + "</div>";
+        if (acks.length) {
+          html += "<div class='who-line'>已确认：" + acks.map(function (a) { return esc(short(a.sub)); }).join("、") + "</div>";
+        }
+        if (iAmParty && !myAcked && !verified) {
+          html += "<button class='ok' data-ack='" + p.id + "'>我本人点确认</button>";
+          html += "<div class='hint'>点下去表示：这是我本人同意的拍板，不是帮别人点。</div>";
+        }
+        html += "</div>";
+      });
+    }
+    $("status-body").innerHTML = html;
+
+    // 确认按钮（事件委托，避免覆盖）
+    Array.prototype.forEach.call(document.querySelectorAll("[data-ack]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-ack");
+        api("/circle/api/ack", "POST", { circle_id: state.circleId, proposal_id: pid })
+          .then(function (jj) {
+            show($("seat-msg"), jj.can_complete ? "ok" : "ok",
+              jj.can_complete ? "已确认，本场达成共识。" : "已确认（等待其他人）");
+            refresh();
+          }).catch(function (e) { show($("seat-msg"), "err", "确认失败：" + e.message); });
+      });
+    });
+  }
+
+  // ---------- 启动：已存令牌/圈号/深链则直入 ----------
+  (function boot() {
+    if (state.token) {
+      $("token").value = state.token;
+      api("/circle/api/me").then(function (j) {
+        state.sub = j.sub;
+        $("who").textContent = "已入场：" + short(j.sub);
+        showEl($("btn-leave"));
+        hideEl($("card-entry"));
+        showEl($("card-seat"));
+        var cidFromUrl = new URLSearchParams(location.search).get("c");
+        if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
+        if (state.circleId) { $("circle-id").value = state.circleId; }
+      }).catch(function () { /* 令牌失效则留在入场页 */ });
+    }
+  })();
+})();
+</script>
+</body>
+</html>

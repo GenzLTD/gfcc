@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .circle_web import router as circle_web_router
 from .dispatcher import parse_then_dispatch
 from .envelope import AskRequest, AskResponse
 from .registry import PortRegistry
@@ -128,6 +129,13 @@ async def v1_ask(request: Request, body: AskRequest) -> AskResponse:
         llm=_llm,
     )
     return parse_then_dispatch(body, ctx)
+
+
+# --------------------------------------------------------------------------- #
+# /circle 围坐会场（公网入口：GET /circle/ + /circle/api/*）
+# --------------------------------------------------------------------------- #
+
+app.include_router(circle_web_router)
 
 
 # --------------------------------------------------------------------------- #
