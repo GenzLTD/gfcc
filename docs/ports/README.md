@@ -12,7 +12,7 @@
 | **L-1 价值层** | [`docs/vision.md`](../vision.md) | 不参与执行；**约束一切变更**。先过「人是目的 / 成功判据」再改契约 |
 | **L0 真源** | 本页 · `contracts/*.v1.json` | 实现、演示栈、文档示例都向它适配 |
 | **L1 内核** | ethos 验证 · `POST /v1/ask` 信封 · 五槽 | 只认端口接口，不认服务名 |
-| **L2 默认组合** | kernel + 五个一等端口（stub 合法） | 空数据合法。**实现对照（非契约，2026-08-27）**：sqlite 只持久化 `memory_records` + `signal_log`；circle / consensus / identity / session 仍内存 |
+| **L2 默认组合** | kernel + 五个一等端口（stub 合法） | 空数据合法。**实现对照（非契约，2026-08-28）**：sqlite 持久化 `memory_records` + `signal_log` + 圈态库 `circle_flow.db`（circle / consensus / 地板，重启不丢）；identity / session 仍内存 |
 | **L3 可选画像** | `modes/profile.demo.yaml` | 可卸载；**不得**进入 L0 必选项 |
 
 **谁是权威、谁是执行**：**gfcc = 契约层（真源）**；**Tatha = 实现层**（`POST /v1/ask` 的一个具体实现，可替换）。方法学来自 Tatha 单入口文档，不等于 Tatha 是真源。

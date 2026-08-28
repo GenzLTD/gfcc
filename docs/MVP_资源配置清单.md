@@ -20,7 +20,7 @@
 | G3 | 三人理解：ack 必须本人点；AI 不能代 ack；不能只为自己认定贡献 | | |
 | G4 | 升级路径书面约定：C 从旁观升参与须带 Dual/CoCo 证据，禁止只拨 admin | | |
 | G5 | 本场阈值已写下（默认 85 或 circle 自定），并约定 AI 证据不得作为唯一依据 | | |
-| G6 | 内核侧：circle / consensus / contribution 能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测。**现况（2026-08-27）**：端口 API 在；圈/共识/身份仍内存，重启丢围坐态；`signal_log`/`memory_records` 已 sqlite。未解决持久化前，系统内测必须当场抄 id，否则只算桌面演练 | | |
+| G6 | 内核侧：circle / consensus / contribution 能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测。**现况（2026-08-28）**：圈/共识/地板已落库（`circle_flow.db`，天翼 `29ff821` 上云冒烟通过），重启不再清场；`signal_log`/`memory_records` 已 sqlite；identity/contribution 端口仍在（stub 记一笔，无兑现入口）。贡献兑现 / C 升级未做 → 系统内测仍需当场抄 id 防断链 | | |
 
 **评估结论**：□ 具备条件，可以开始　□ 不具备，继续等席位/议题  
 **评估人 / 日期**：________________
