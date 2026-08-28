@@ -19,8 +19,9 @@ from __future__ import annotations
 
 import logging
 import time
+from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Deque, Dict, List
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
@@ -28,6 +29,8 @@ from pydantic import BaseModel
 
 # 延迟到函数体内访问 app 单例（避免与 app.py 循环 import）
 from . import app as _app
+from . import invites as _invites
+from . import tokens as _tokens
 
 logger = logging.getLogger("gfcc_kernel.circle_web")
 
@@ -71,6 +74,57 @@ async def circle_page() -> str:
 # --------------------------------------------------------------------------- #
 # API
 # --------------------------------------------------------------------------- #
+
+# redeem 失败限流：进程内计数（单 worker 语义），同 IP 10 分钟内失败 20 次 → 429。
+# 成功兑换不计数（防误伤正常 tester）；重启即清零（已知边界，见部署手册 §9）。
+_RATE_WINDOW_SEC = 600
+_RATE_FAIL_LIMIT = 20
+_rate_fails: Dict[str, Deque[float]] = {}
+
+
+def _rate_blocked(ip: str) -> bool:
+    now = time.time()
+    q = _rate_fails.get(ip)
+    if not q:
+        return False
+    while q and now - q[0] > _RATE_WINDOW_SEC:
+        q.popleft()
+    return len(q) >= _RATE_FAIL_LIMIT
+
+
+def _rate_note_fail(ip: str) -> None:
+    _rate_fails.setdefault(ip, deque()).append(time.time())
+
+
+class RedeemBody(BaseModel):
+    code: str = ""
+
+
+@router.post("/api/redeem")
+async def api_redeem(request: Request, body: RedeemBody) -> Dict[str, Any]:
+    """邀请深链兑换：16 位码 → sub + 会话 JWT（无 Bearer）。
+
+    - 码只走 POST body，不进 URL query（天翼 nginx 访问日志不记录 query，
+      但也别把码放 URL 自找风险）。
+    - 失败（未知/过期/已兑换）按 IP 计数，10 分钟 20 次封禁。
+    - 成功即签 JWT（与 issue_persona_tokens.py 同实现/同密钥），
+      随后前端拿 token 走 /api/me 入场。
+    """
+    ip = request.client.host if request.client else "unknown"
+    code = (body.code or "").strip().upper()
+    if not _invites.is_valid_code(code):
+        raise HTTPException(status_code=400, detail="invalid code")
+    if _rate_blocked(ip):
+        raise HTTPException(status_code=429, detail="too many failed attempts, please try again later")
+    status, sub, _exp = _invites.get_store().redeem(code)
+    if status == "missing":
+        _rate_note_fail(ip)
+        raise HTTPException(status_code=404, detail="invite not found")
+    if status == "used":
+        _rate_note_fail(ip)
+        raise HTTPException(status_code=410, detail="invite already used — 请向主持人再要一条，或粘贴备用令牌")
+    token = _tokens.issue_token(sub, _tokens.load_secret(), days=30)
+    return {"sub": sub, "token": token}
 
 
 class CreateBody(BaseModel):

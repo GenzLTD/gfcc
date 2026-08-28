@@ -122,13 +122,16 @@ def test_join_unknown_circle_rejected() -> None:
         assert "not found" in r.json()["detail"]
 
 
-def test_duplicate_join_rejected() -> None:
+def test_duplicate_join_is_idempotent() -> None:
+    """重复入座幂等：已入座再 join 返回 200，成员不重复（配合 leave 后重进）。"""
     with TestClient(kernel_app) as client:
         cid = _create_circle(client)
-        assert client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B)).status_code == 200
-        r = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
-        assert r.status_code == 400
-        assert "already a member" in r.json()["detail"]
+        r1 = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        assert r1.status_code == 200
+        assert len(r1.json()["members"]) == 2
+        r2 = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        assert r2.status_code == 200
+        assert len(r2.json()["members"]) == 2
 
 
 def test_propose_needs_two_seated() -> None:

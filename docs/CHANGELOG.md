@@ -2,6 +2,7 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `feat(circle)` 邀请深链入场（2026-08-28）：一次性兑换码 `POST /circle/api/redeem`（码走 body），CLI `--invite-base` 只发 URL、`--out` 不含密钥；页面 `?i=` 自动兑换后 `replaceState` 去码。本地已验收（pytest 135、`:5211` 四态 + 浏览器 410），**待上云**。非自助注册。施工单 [`docs/围坐会场_邀请深链实施.md`](围坐会场_邀请深链实施.md)。
 - `feat(circle)` 围坐会场首场内测（2026-08-28）：`/circle/` 单页公网入口，jason / tester-b / tester-c 三令牌实测本人确认链路（建圈→入座→旁观→拍板→本人确认→达成→连续推进→换人当组织者）。修复 3 问题：①组织者视角大字展示圈号本体（UUID 可复制）+ 分享链接（建圈成功时同样展示）；②入座失败根因=议题名当圈号，md5 核对排除代码问题后同处 UI 根治；③旁观提示「只旁观·先只看」「只能看不能确认」，旁观不显示确认按钮，一次只推进一条共识。**验的是本人确认链路**，兑现 / C 升级 / 记忆引用未做；圈与共识仍在内存，远程无 JWT 无法复验账本 id。纪要见 [`docs/reviews/围坐会场内测纪要_2026-08-28.md`](reviews/围坐会场内测纪要_2026-08-28.md)。
 - `feat(kernel)` Step 1 记忆体按人隔离（2026-08-27）：`query`/`get`/`recall` 必带 `actor_sub`；无 sub 不落 `"system"`；HS256 无 token / 坏 token → 401。签发脚本 `scripts/issue_persona_tokens.py`。验收见 [`docs/reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md`](reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md)。运行树 `~/Projects/gfcc`。
 - `docs` 2026-08-27 按现况修订：[`VERSIONING.md`](VERSIONING.md)（P3 已完、硬化可排期、实现债≠契约 bump、ack 不得被录像代替）；testers 须知 / MVP 内测手册（会场 ≠ PlanetX；令牌 ≠ Tatha 演示桩；验证 = 人↔sub↔id）；MVP 清单 G6 写明圈/共识仍内存；联邦方案标题与 §8.4 边界 2 关闭 P3；硬化 R4 与 L5 对账。

@@ -118,8 +118,9 @@
   <!-- 1 入场 -->
   <section class="card" id="card-entry">
     <h2><span class="step">1</span>入场</h2>
-    <div class="desc">粘贴主持人发给你的入场令牌。这把令牌就是你本人，请勿转发给任何人。</div>
-    <label for="token">入场令牌</label>
+    <div class="desc">点主持人发的邀请链接，打开即自动入场。链接失效时，粘贴主持人给你的备用令牌——令牌就是你本人，请勿转发给任何人。</div>
+    <div class="banner note">本页没有注册，也不需要注册账号。</div>
+    <label for="token">备用令牌</label>
     <input id="token" type="password" autocomplete="off" placeholder="粘贴 JWT 令牌">
     <button id="btn-entry">入场</button>
     <div class="banner" id="entry-msg"></div>
@@ -232,6 +233,47 @@
       if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
       if (state.circleId) { $("circle-id").value = state.circleId; }
     }).catch(function (e) { show($("entry-msg"), "err", "入场失败：" + e.message); });
+  }
+
+  // ---------- 邀请深链兑换（?i=） ----------
+  function redeemInvite(code) {
+    var btn = $("btn-entry");
+    btn.disabled = true;
+    show($("entry-msg"), "note", "正在用邀请链接兑换入场令牌…");
+    fetch(API + "/circle/api/redeem", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: code })
+    }).then(function (r) {
+      return r.json().then(function (j) {
+        if (!r.ok) { var e = new Error(j.detail || (r.status + " " + r.statusText)); e.status = r.status; throw e; }
+        return j;
+      });
+    }).then(function (j) {
+      state.token = j.token;
+      sessionStorage.setItem("gfcc_circle_token", j.token);
+      // 兑换成功：地址栏去掉 i（保留 c），刷新后不再重复兑换
+      var u = new URL(location.href);
+      u.searchParams.delete("i");
+      history.replaceState({}, "", u.toString());
+      // 复用入场成功路径
+      return api("/circle/api/me").then(function (mj) {
+        state.sub = mj.sub;
+        sessionStorage.setItem("gfcc_circle_sub", mj.sub);
+        $("who").textContent = "已入场：" + short(mj.sub);
+        showEl($("btn-leave"));
+        hideEl($("card-entry"));
+        show($("entry-msg"), "ok", "邀请已兑换，入场成功：" + mj.sub + "。令牌就是你的身份，勿转发。");
+        showEl($("card-seat"));
+        var cidFromUrl = new URLSearchParams(location.search).get("c");
+        if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
+        if (state.circleId) { $("circle-id").value = state.circleId; }
+      });
+    }).catch(function (e) {
+      btn.disabled = false;
+      show($("entry-msg"), "err", "邀请兑换失败：" + e.message + "。请向主持人再要一条链接，或粘贴备用令牌。");
+      $("token").focus();
+    });
   }
 
   // ---------- 退出 ----------
@@ -400,6 +442,8 @@
 
   // ---------- 启动：已存令牌/圈号/深链则直入 ----------
   (function boot() {
+    var qs = new URLSearchParams(location.search);
+    var invite = qs.get("i");
     if (state.token) {
       $("token").value = state.token;
       api("/circle/api/me").then(function (j) {
@@ -412,7 +456,10 @@
         if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
         if (state.circleId) { $("circle-id").value = state.circleId; }
       }).catch(function () { /* 令牌失效则留在入场页 */ });
+    } else if (invite) {
+      redeemInvite(invite);
     }
+    // 无 token 无邀请：留在入场页粘贴备用令牌
   })();
 })();
 </script>
