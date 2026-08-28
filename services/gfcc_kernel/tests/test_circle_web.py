@@ -450,3 +450,137 @@ def test_redeem_invite_flow(tmp_path, monkeypatch) -> None:
         # 同码二兑 → 410 已兑换
         r = client.post("/circle/api/redeem", json={"code": code})
         assert r.status_code == 410
+
+
+# ---------- G6 兑现与升级（CoCo 循环 + 八角梯） ----------
+
+
+def _profile(sub: str) -> dict:
+    """直接读 identity 端口画像（app 模块级 registry 单例，测试共享）。"""
+    from gfcc_kernel import app as app_mod
+
+    return app_mod._registry.get("identity").get_profile(sub).data["profile"]
+
+
+def test_attest_and_fulfill_mints_evidence_trace() -> None:
+    """G6 兑现入口：A 认定 B 的贡献 → A（steward+）兑现 → B 画像出现 contribution evidence 轨迹。
+
+    兑现轨迹由 contribution 端口写入（source_port=contribution, weight=evidence），
+    印证「兑现入口打通」而非仅返回 may_mint_trace=True。
+    """
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+
+        # A 认定 B 的贡献（participant+ 可 attest）
+        r = client.post(
+            "/circle/api/attest",
+            json={"circle_id": cid, "subject_sub": "tester-b", "claim": "B 完成内存隔离验收"},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 200, r.text
+        rid = r.json()["record_id"]
+        assert r.json()["record"]["status"] == "attested"
+
+        # B（participant）不能兑现 → 403（roles.v1：fulfill 属 steward+）
+        r = client.post("/circle/api/fulfill", json={"circle_id": cid, "record_id": rid}, headers=_auth(TOKEN_B))
+        assert r.status_code == 403
+
+        # A（organizer，包含 steward）兑现 → minted_trace_id 是真实 trace id（非 sub）
+        r = client.post("/circle/api/fulfill", json={"circle_id": cid, "record_id": rid}, headers=_auth(TOKEN_A))
+        assert r.status_code == 200, r.text
+        assert r.json()["record"]["status"] == "fulfilled"
+        minted = r.json()["minted_trace_id"]
+        # 之前回归：append_trace 返回 id=sub 导致 minted_trace_id 变成 "tester-b"；必须指向 trace 条目
+        assert minted is not None and minted != "tester-b"
+        assert len(minted) == 36  # uuid4 格式
+
+        # B 画像出现 contribution evidence 轨迹（兑现入口真 mint，非仅标记）
+        profile = _profile("tester-b")
+        trace = [t for t in profile["capability_trace"] if t["source_port"] == "contribution"]
+        assert len(trace) >= 1
+        assert trace[-1]["weight"] == "evidence"
+        assert trace[-1]["label"].startswith("contribution:")
+        assert trace[-1].get("id") == minted  # minted_trace_id 与轨迹条目 id 对应
+
+
+def test_attest_self_rejected() -> None:
+    """不能只为自己 attest 作为唯一证据。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        r = client.post(
+            "/circle/api/attest",
+            json={"circle_id": cid, "subject_sub": "tester-a", "claim": "我很努力"},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 400
+        assert "oneself" in r.json()["detail"]
+
+
+def test_attest_requires_member() -> None:
+    """未入座的 C 不能认定贡献。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        r = client.post(
+            "/circle/api/attest",
+            json={"circle_id": cid, "subject_sub": "tester-b", "claim": "C 乱认定"},
+            headers=_auth(TOKEN_C),
+        )
+        assert r.status_code == 403
+        assert "seated members" in r.json()["detail"]
+
+
+def test_promote_c_requires_evidence() -> None:
+    """G6 升级：无证据 → 400（禁止只拨 admin）；带证据 → 升级成功并记录证据引用。
+
+    C 旁观不入座，升级的是 identity 画像 role（observer → participant），
+    role_evidence_ids 记录兑现记录 id，role_changed_by 记录执行人。
+    """
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+
+        # 先造一条真实证据：A 认定 B 并兑现 → evidence_id（fulfilled record）
+        r = client.post(
+            "/circle/api/attest",
+            json={"circle_id": cid, "subject_sub": "tester-b", "claim": "B 完成业务运维"},
+            headers=_auth(TOKEN_A),
+        )
+        rid = r.json()["record_id"]
+        r = client.post("/circle/api/fulfill", json={"circle_id": cid, "record_id": rid}, headers=_auth(TOKEN_A))
+        assert r.json()["minted_trace_id"] is not None
+
+        # 无证据 → 400（admin toggle 被拒）
+        r = client.post(
+            "/circle/api/promote",
+            json={"circle_id": cid, "sub": "tester-c", "new_role": "participant", "evidence_ids": []},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 400
+        assert "evidence" in r.json()["detail"]
+
+        # 带证据 → 200：role 升 participant + 记录证据 id
+        r = client.post(
+            "/circle/api/promote",
+            json={"circle_id": cid, "sub": "tester-c", "new_role": "participant", "evidence_ids": [rid]},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 200, r.text
+        profile = _profile("tester-c")
+        assert profile["role"] == "participant"
+        assert rid in profile["role_evidence_ids"]
+        assert profile["role_changed_by"] == "tester-a"
+
+
+def test_promote_requires_organizer() -> None:
+    """非 organizer（B participant）不能发起升级。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        r = client.post(
+            "/circle/api/promote",
+            json={"circle_id": cid, "sub": "tester-c", "new_role": "participant", "evidence_ids": ["x"]},
+            headers=_auth(TOKEN_B),
+        )
+        assert r.status_code == 403
+        assert "organizer" in r.json()["detail"]

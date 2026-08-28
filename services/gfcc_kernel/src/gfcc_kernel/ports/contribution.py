@@ -12,11 +12,14 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import uuid
 
 from ..envelope import PortOpResult
+
+if TYPE_CHECKING:
+    from .identity import IdentityAdapter
 
 VALID_STATUSES = {"attested", "fulfilled", "appealed", "overturned", "withdrawn"}
 
@@ -28,9 +31,12 @@ def _now() -> str:
 class ContributionAdapter:
     """CoCo 循环 stub。内存实现，空数据合法。"""
 
-    def __init__(self) -> None:
+    def __init__(self, identity: Optional["IdentityAdapter"] = None) -> None:
         self._lock = threading.Lock()
         self._records: Dict[str, Dict[str, Any]] = {}
+        # G6 兑现入口：fulfill 成功且申诉未打开时，向 identity.append_trace mint
+        # contribution evidence 轨迹（contribution 在 EVIDENCE_SOURCES 白名单内）。
+        self._identity = identity
 
     # ------------------------------------------------------------------ #
     # operations
@@ -70,9 +76,28 @@ class ContributionAdapter:
             rec["status"] = "fulfilled"
             rec["fulfilled_at"] = _now()
             rec["fulfilled_by"] = steward_sub
+            # G6 兑现入口：申诉未打开 → contribution 端口向 identity mint evidence 轨迹
+            # （identity 不自证能力，兑现轨迹由 contribution 侧写入，兑现人才有资格）
+            minted_trace_id: Optional[str] = None
+            if self._identity is not None and rec.get("appeal") is None:
+                tr = self._identity.append_trace(
+                    sub=rec["subject_sub"],
+                    label=f"contribution:{rec['claim'][:50]}",
+                    source_port="contribution",
+                    weight="evidence",
+                )
+                if tr.ok:
+                    minted_trace_id = tr.id
+                    rec["minted_trace_id"] = minted_trace_id
             return PortOpResult(
                 ok=True, id=record_id,
-                data={"record": dict(rec), "may_mint_trace": True, "source_port": "contribution", "weight": "evidence"},
+                data={
+                    "record": dict(rec),
+                    "may_mint_trace": True,
+                    "minted_trace_id": minted_trace_id,
+                    "source_port": "contribution",
+                    "weight": "evidence",
+                },
             )
 
     def appeal(self, record_id: str, by_sub: str, reason: str) -> PortOpResult:
@@ -131,6 +156,14 @@ class ContributionAdapter:
     # ------------------------------------------------------------------ #
     # 查询辅助
     # ------------------------------------------------------------------ #
+
+    def get(self, record_id: str) -> PortOpResult:
+        """按 id 取记录（供 web 层校验记录归属圈）。"""
+        with self._lock:
+            rec = self._records.get(record_id)
+            if rec is None:
+                return PortOpResult(ok=False, error=f"record not found: {record_id}")
+            return PortOpResult(ok=True, id=record_id, data={"record": dict(rec)})
 
     def list_all(self) -> List[Dict[str, Any]]:
         with self._lock:

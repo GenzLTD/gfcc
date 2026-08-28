@@ -21,7 +21,7 @@
 > 天翼现网（2026-08-26 核实；08-27 P3 入口已切）：systemd `gfcc-kernel.service`，工作目录 **`/data/gfcc/services/gfcc_kernel`**，venv 内 uvicorn 听 `0.0.0.0:5211`（安全组不放行）。人网唯一入口 `http://14.29.216.219/`。查库用 `./.venv/bin/python scripts/query_signal_log.py`，不要系统 `python`。联邦闭环见 [`docs/联邦测试闭环方案.md`](联邦测试闭环方案.md)。
 > `SIGNAL_INGEST_SECRET` 天翼为内测值（与 Looma 出站同一把，≠ `ETHOS_AUTH_SECRET`，禁止留空免签上云）。
 > 槽位由环境变量装配：`LLM_PROVIDER`（stub/ollama）、`STORE_PROVIDER`（stub/sqlite）、`STORE_DB_PATH`、`OLLAMA_MODEL`、`OLLAMA_BASE_URL`、`CONSENSUS_THRESHOLD`（默认 85），详见 `.env.example`。
-> **持久化现况**：sqlite 保存 `memory_records` 与 `signal_log`；circle / consensus / identity / session **仍在内存**，重启丢围坐态。契约版本见 [`VERSIONING.md`](VERSIONING.md)。
+> **持久化现况（2026-08-28）**：sqlite 保存 `memory_records`、`signal_log` 与 `circle_flow.db`（圈 / 共识 / 地板，重启不丢场次态）；**identity / contribution / session 仍在内存**，散会前须抄验收 id。契约版本见 [`VERSIONING.md`](VERSIONING.md)。
 
 ## 2. 前置条件
 

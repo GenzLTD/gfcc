@@ -18,9 +18,9 @@
 | G1 | 已指定**一个**真实 circle 名称与议题（不是「测试圈」空转） | | |
 | G2 | 下表席位 A/B/C 已有**具名真人**承诺参加一场同步（不是开发账号） | | |
 | G3 | 三人理解：ack 必须本人点；AI 不能代 ack；不能只为自己认定贡献 | | |
-| G4 | 升级路径书面约定：C 从旁观升参与须带 Dual/CoCo 证据，禁止只拨 admin | | |
-| G5 | 本场阈值已写下（默认 85 或 circle 自定），并约定 AI 证据不得作为唯一依据 | | |
-| G6 | 内核侧：circle / consensus / contribution 能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测。**现况（2026-08-28）**：圈/共识/地板已落库（`circle_flow.db`，天翼 `29ff821` 上云冒烟通过），重启不再清场；`signal_log`/`memory_records` 已 sqlite；identity/contribution 端口仍在（stub 记一笔，无兑现入口）。贡献兑现 / C 升级未做 → 系统内测仍需当场抄 id 防断链 | | |
+| G4 | 升级路径书面约定：C 从旁观升参与须带 Dual/CoCo 证据，禁止只拨 admin | | 书面约定已落：手册 §五.6 + 本节 §4.5（08-28）。工程侧已实现：`/circle/api/promote` → `identity.promote_role`，无证据 400（admin toggle 被拒），升级记录 `role_evidence_ids` + `role_changed_by` |
+| G5 | 本场阈值已写下（默认 85 或 circle 自定），并约定 AI 证据不得作为唯一依据 | | 已写下（08-28）：手册 §五.3「本场阈值：默认 **85**（`CONSENSUS_THRESHOLD`，circle 可自定）；AI 证据只作辅证，不得作为唯一依据」+ 本节 §4.2「至多一条 AI 辅证」 |
+| G6 | 内核侧：circle / consensus / contribution 能走完剧本（不仅 stub 记一笔）；密钥已按环境区分联调/内测。**现况（2026-08-28）**：圈/共识/地板已落库（`circle_flow.db`，天翼 `29ff821` 上云冒烟通过），重启不再清场；`signal_log`/`memory_records` 已 sqlite；**兑现入口已打通**（`/circle/api/attest` + `/circle/api/fulfill`，兑现自动 mint `contribution` evidence 轨迹到 B 画像）；**C 升级有证据记录**（`/circle/api/promote`，无证据 400）。identity/contribution 数据本身仍在内存（无兑现持久化表），但「兑现 → 升级」剧本链路已可走通 | | |
 
 **评估结论**：□ 具备条件，可以开始　□ 不具备，继续等席位/议题  
 **评估人 / 日期**：________________
@@ -76,9 +76,9 @@ G3 已满足「管道通」。下列是 **circle 剧本能跑完** 才需要的�
 |----|----------|------|
 | circle 端口 | 能 create / join；成员 role 可解析。现实现：内存，重启丢 | |
 | consensus 端口 | propose → 带 `score_evidence` 的 score → 全员 ack → `consensus_verified`；`consensus_math` 若用只进证据，**不能**跳过 ack。现实现：内存；录像/转写不得代替 ack | |
-| contribution 端口 | 他认 attest + steward fulfill；拒绝「只为自己认定」 | |
+| contribution 端口 | 他认 attest + steward fulfill；拒绝「只为自己认定」。**现况（08-28）**：web 面 `/circle/api/attest` + `/circle/api/fulfill` 已实现（participant+ 认定、steward+ 兑现），fulfill 自动 mint evidence 轨迹 | |
 | memory 端口 | 议题/行动可 `refs` 指向上一场共识或记忆（判据 1）。`memory_records` 已 sqlite | |
-| identity | fulfill 后 `capability_trace` 可查；C 升级有证据记录。**Tatha `demo-token-*` 不算围坐身份**；每人一张主持人发放的令牌，`sub` 对报名表 | |
+| identity | fulfill 后 `capability_trace` 可查；C 升级有证据记录。**现况（08-28）**：兑现后 B 画像出现 `contribution` evidence 轨迹；`/circle/api/promote` 升级记录 `role_evidence_ids` + `role_changed_by`，无证据拒绝。**Tatha `demo-token-*` 不算围坐身份**；每人一张主持人发放的令牌，`sub` 对报名表 | |
 | 密钥 | 天翼 ingest 已换内测值（联邦 L5，≠ ETHOS、≠ 联调 `dev-signal-secret-*`）。双活轮换仍见硬化 R4，不挡本页人齐 | |
 
 未勾完 **G6 + 本节**，即使人齐了也只做桌面演练，不开系统内测。
@@ -101,7 +101,7 @@ G3 已满足「管道通」。下列是 **circle 剧本能跑完** 才需要的�
 
 ## 5. 内测通过口径（给人看，不是给 CI 看）
 
-场次结束后，五条都要能指出**库里的 id**（人 ↔ `sub` ↔ 记录），否则本场失败、不算 MVP 内测通过。不回放腾讯会议验收。圈/共识若仍在内存，**散会前抄 id**。
+场次结束后，五条都要能指出**库里的 id**（人 ↔ `sub` ↔ 记录），否则本场失败、不算 MVP 内测通过。不回放腾讯会议验收。圈/共识/地板已落库（`circle_flow.db` 重启不丢）；identity/contribution 数据仍内存，**散会前抄 id**。
 
 | 判据 | 本场最低证据 |
 |------|----------------|

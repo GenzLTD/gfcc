@@ -48,7 +48,7 @@ class PortRegistry:
         self._identity = IdentityAdapter()
         self._memory = MemoryAdapter(store=self._store)
         self._consensus = ConsensusAdapter(threshold=threshold, flow=flow)
-        self._contribution = ContributionAdapter()
+        self._contribution = ContributionAdapter(identity=self._identity)
         self._ports: Dict[str, Any] = {
             "circle": self._circle,
             "identity": self._identity,

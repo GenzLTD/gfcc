@@ -309,3 +309,117 @@ async def api_status(request: Request, circle_id: str) -> Dict[str, Any]:
 async def api_me(request: Request) -> Dict[str, Any]:
     """当前令牌是谁。页面入场时调用。"""
     return {"sub": _sub(request)}
+
+
+# --------------------------------------------------------------------------- #
+# G6 兑现与升级（CoCo 循环 + 八角梯）：
+#   - /api/attest   A 认定 B 的贡献（contribution.attest，participant+）
+#   - /api/fulfill  兑现承诺（contribution.fulfill，steward+，兑现入口 → identity trace）
+#   - /api/promote  C 升级（identity.promote_role，organizer 执行，须带证据）
+# --------------------------------------------------------------------------- #
+
+# contracts/roles.v1.json role_enum（八角梯），index 越大级别越高
+_ROLE_LADDER = ["observer", "participant", "experimenter", "proposer", "steward", "organizer", "actor", "petitioner"]
+
+
+def _member_role(circle: Dict[str, Any], sub: str) -> Optional[str]:
+    for m in circle.get("members", []):
+        if m["sub"] == sub:
+            return m.get("role", "participant")
+    return None
+
+
+def _role_at_least(role: Optional[str], required: str) -> bool:
+    if role is None:
+        return False
+    return _ROLE_LADDER.index(role) >= _ROLE_LADDER.index(required)
+
+
+class AttestBody(BaseModel):
+    circle_id: str
+    subject_sub: str
+    claim: str
+
+
+@router.post("/api/attest")
+async def api_attest(request: Request, body: AttestBody) -> Dict[str, Any]:
+    """A 认定 B 的贡献：contribution.attest（CoCo 循环第一步）。
+
+    - 需要圈内成员（participant+，roles.v1 participant 含 contribution.attest）。
+    - 不能只为自己 attest 作为唯一证据（端口拒绝 subject == attestor）。
+    - 返回 record_id，随后可走 /api/fulfill 兑现。
+    """
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    if sub not in [m["sub"] for m in circle.get("members", [])]:
+        raise HTTPException(status_code=403, detail="only seated members may attest")
+    res = _app._registry.get("contribution").attest(body.circle_id, body.subject_sub, sub, body.claim)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": body.circle_id, "record_id": res.id, "record": res.data["record"]}
+
+
+class FulfillBody(BaseModel):
+    circle_id: str
+    record_id: str
+
+
+@router.post("/api/fulfill")
+async def api_fulfill(request: Request, body: FulfillBody) -> Dict[str, Any]:
+    """兑现承诺：contribution.fulfill（CoCo 循环第二步，G6 兑现入口）。
+
+    - 需要 steward+（roles.v1 steward 含 contribution.fulfill）。
+    - 兑现成功且申诉未打开 → contribution 端口向 identity mint evidence 轨迹
+      （返回 minted_trace_id；identity 不自证能力）。
+    """
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    role = _member_role(circle, sub)
+    if not _role_at_least(role, "steward"):
+        raise HTTPException(status_code=403, detail="only steward or above may fulfill")
+    contribution = _app._registry.get("contribution")
+    rec = contribution.get(body.record_id)
+    if not rec.ok:
+        raise HTTPException(status_code=404, detail=rec.error)
+    if rec.data["record"].get("circle_id") != body.circle_id:
+        raise HTTPException(status_code=400, detail="record not in this circle")
+    res = contribution.fulfill(body.record_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {
+        "circle_id": body.circle_id,
+        "record_id": res.id,
+        "record": res.data["record"],
+        "minted_trace_id": res.data["minted_trace_id"],
+    }
+
+
+class PromoteBody(BaseModel):
+    circle_id: str
+    sub: str
+    new_role: str
+    evidence_ids: List[str] = []
+
+
+@router.post("/api/promote")
+async def api_promote(request: Request, body: PromoteBody) -> Dict[str, Any]:
+    """C 升级：identity.promote_role（带证据，禁止只拨 admin）。
+
+    - 需要 organizer（roles.v1 transitions：升级 driven_by 证据记录；
+      admin toggle 是 ops_exception，需 audit 为 admin.role.set）。
+    - new_role 必须在八角梯；evidence_ids 必须非空且引用真实记录
+      （memory records / contribution fulfillments / consensus_verified）。
+    - C 旁观不入座：升级的是 identity 画像 role，升级后即可 join 入座。
+    """
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    role = _member_role(circle, sub)
+    if not _role_at_least(role, "organizer"):
+        raise HTTPException(status_code=403, detail="only organizer or above may promote")
+    res = _app._registry.get("identity").promote_role(
+        body.sub, body.new_role, body.evidence_ids, changed_by=sub,
+        note=f"promoted by organizer in circle {body.circle_id}",
+    )
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"sub": body.sub, "profile": res.data["profile"], "old_role": res.data["old_role"]}

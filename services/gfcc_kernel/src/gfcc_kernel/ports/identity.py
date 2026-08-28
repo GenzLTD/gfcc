@@ -23,6 +23,18 @@ TRACE_SOURCE_WHITELIST = EVIDENCE_SOURCES | AUXILIARY_SOURCES
 
 COMMITMENT_STATUS = {"offered", "accepted", "fulfilled", "withdrawn"}
 
+# contracts/roles.v1.json role_enum —— 八角梯，index 越大级别越高
+ROLE_ENUM = [
+    "observer",
+    "participant",
+    "experimenter",
+    "proposer",
+    "steward",
+    "organizer",
+    "actor",
+    "petitioner",
+]
+
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
@@ -97,8 +109,10 @@ class IdentityAdapter:
             return PortOpResult(ok=False, error=f"source {source_port} cannot mint evidence weight")
         with self._lock:
             profile = self._ensure(sub)
+            trace_id = str(uuid.uuid4())
             profile["capability_trace"].append(
                 {
+                    "id": trace_id,
                     "label": label,
                     "source_port": source_port,
                     "weight": weight,
@@ -106,7 +120,36 @@ class IdentityAdapter:
                     "superseded_at": None,
                 }
             )
-        return PortOpResult(ok=True, id=sub, data={"profile": dict(profile)})
+        return PortOpResult(ok=True, id=trace_id, data={"profile": dict(profile)})
+
+    def promote_role(self, sub: str, new_role: str, evidence_ids: List[str],
+                     changed_by: str, note: Optional[str] = None) -> PortOpResult:
+        """带证据的角色升级（G6 兑现入口 + 升级路径）。
+
+        对齐 contracts/roles.v1.json transitions：
+        - driven_by: memory records / contribution fulfillments / consensus_verified /
+          ai_observed（辅助证据，单独不足以上升）。
+        - not_driven_by_long_term: admin toggle only —— 升级必须有证据，禁止只拨 admin。
+        - ops_exception: admin/system may set roles for repair; must audit as admin.role.set。
+
+        new_role 必须在八角梯（ROLE_ENUM）内；evidence_ids 必须非空且引用真实记录。
+        """
+        if new_role not in ROLE_ENUM:
+            return PortOpResult(ok=False, error=f"invalid role: {new_role}")
+        if not evidence_ids:
+            return PortOpResult(ok=False, error="promotion requires evidence_ids (no admin toggle)")
+        with self._lock:
+            profile = self._ensure(sub)
+            old_role = profile.get("role", "observer")
+            if new_role == old_role:
+                return PortOpResult(ok=False, error=f"already role {new_role}")
+            profile["role"] = new_role
+            profile["role_evidence_ids"] = list(dict.fromkeys(profile.get("role_evidence_ids", []) + evidence_ids))
+            profile["role_changed_at"] = _now()
+            profile["role_changed_by"] = changed_by
+            if note:
+                profile["role_change_note"] = note
+        return PortOpResult(ok=True, id=sub, data={"profile": dict(profile), "old_role": old_role})
 
     # ------------------------------------------------------------------ #
     # 信号摄入（Step3 W3）：personality_beacon → 画像 auxiliary trace
