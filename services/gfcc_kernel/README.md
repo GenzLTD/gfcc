@@ -118,7 +118,9 @@ python scripts/query_signal_log.py --json --limit 5
 围坐会场 `GET /circle/` 凭票进入：主持人（持 `ETHOS_AUTH_SECRET` 者）用
 `scripts/issue_persona_tokens.py` 签发 HS256 JWT，一人一张，`sub` 即身份
 （脚本拒绝重复 sub）。testers 用自己的票访问围坐页，旁观/入座/拍板/确认
-各按角色放行。
+各按角色放行；拍板实行发言权轮询：建圈者先持地板，一条共识达成后按
+入座顺序交给下一位（两人圈 A→B→A），一次只推进一条，pending 时后端
+同样拒绝再提议。
 
 **为什么不是"自主获取"？**
 

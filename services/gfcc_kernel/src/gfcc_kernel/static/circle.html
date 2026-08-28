@@ -73,6 +73,7 @@
   }
   .pill.me { background: var(--brand-soft); color: var(--brand); }
   .pill.org { background: var(--warn-soft); color: var(--warn); }
+  .pill.floor { background: #fff7e6; color: #b45309; border: 1px dashed #d97706; }
   .banner {
     border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 10px; display: none;
   }
@@ -129,7 +130,7 @@
   <!-- 2 席位 -->
   <section class="card hidden" id="card-seat">
     <h2><span class="step">2</span>席位</h2>
-    <div class="desc">主持人 A：建圈并分享链接。参与者 B：入座参与确认。旁观 C：先只看，不入座。</div>
+    <div class="desc">组织者 A：建圈并分享链接。大家按入座顺序轮流提交拍板句：只有当前「发言权」持有者能写，全员各自确认后交给下一位。旁观 C：先只看，不入座。</div>
     <div class="row">
       <div>
         <div class="desc">我是组织者 A：写一个真议题名建圈，把链接发给大家。</div>
@@ -154,10 +155,10 @@
     </div>
   </section>
 
-  <!-- 3 拍板句（任一已入座成员可见） -->
+  <!-- 3 拍板句（发言权持有者可见） -->
   <section class="card hidden" id="card-propose">
-    <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">成员均可</span></h2>
-    <div class="desc">任一已入座成员写一句要大家一起拍板的话，再给一句话依据。每人各自确认后即达成。</div>
+    <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">发言权</span></h2>
+    <div class="desc">按入座顺序轮流：只有当前「发言权」持有者能写这一句拍板话。全员各自确认后，发言权交给下一位，继续下一条。</div>
     <label for="subject">拍板句</label>
     <textarea id="subject" placeholder="写一个真议题，而不是测试句（例：本周按 W4 节奏推进，周五前完成验收）"></textarea>
     <label for="basis">依据（一句话，可选）</label>
@@ -316,7 +317,7 @@
     state.circleId = cid;
     sessionStorage.setItem("gfcc_circle_id", cid);
     api("/circle/api/join", "POST", { circle_id: cid }).then(function () {
-      show($("seat-msg"), "ok", "已入座，等待成员提交拍板句后确认");
+      show($("seat-msg"), "ok", "已入座。当前发言权可能不在你手上，轮到你时拍板句卡片会自动出现。");
       enterCircle(cid);
     }).catch(function (e) { show($("seat-msg"), "err", "入座失败：" + e.message); });
   });
@@ -348,7 +349,7 @@
       circle_id: state.circleId, subject: subject, basis: $("basis").value.trim(),
     }).then(function () {
       show($("propose-msg"), "ok", "拍板句已提交，等待全员本人点确认");
-      show($("seat-msg"), "ok", "拍板句已提交，卡片已收起：全员确认完会自动恢复，即可提交下一条。");
+      show($("seat-msg"), "ok", "拍板句已提交，卡片已收起：全员确认达成后，发言权自动交给下一位。");
       refresh();
     }).catch(function (e) { show($("propose-msg"), "err", "提交失败：" + e.message); });
   });
@@ -371,10 +372,13 @@
     members.forEach(function (m) { if (m.sub === me) myRole = m.role; });
     var isSeated = myRole !== null;
 
-    // 拍板卡片：任一已入座成员可见（组织者离场后仍可继续研讨下一条）；
+    // 拍板卡片：只有当前发言权持有者（floor_sub）可见；
     // 有未达成拍板句时收起（一次只推进一条共识）
+    var floorSub = j.floor_sub || null;
+    var floorNext = j.floor_next_sub || null;
     var pendingCount = proposals.filter(function (p) { return p.status !== "consensus_verified"; }).length;
-    if (isSeated && !pendingCount) {
+    var isFloor = isSeated && me === floorSub;
+    if (isFloor && !pendingCount) {
       showEl($("card-propose"));
     } else {
       hideEl($("card-propose"));
@@ -389,13 +393,15 @@
       html += "<div class='big-cid'>" + esc(state.circleId) + "</div>";
       if (pendingCount > 0) {
         html += "<div class='banner note' style='display:block;'>还有 " + pendingCount + " 条拍板句在等待确认：全员确认完（状态变「已达成」），才能提交下一条。一次只推进一条共识。</div>";
+      } else if (isSeated && !isFloor) {
+        html += "<div class='banner note' style='display:block;'>当前发言权在 " + esc(short(floorSub || "—")) + " 手上。轮到 TA 写拍板句；本条达成后发言权交给 " + esc(short(floorNext || "—")) + "。</div>";
       }
     }
-    html += "<div style='font-size:13px;color:var(--muted);margin-bottom:8px;'>议题 <b style='color:var(--ink)'>" + esc(circle.name) + "</b> · 已入座 " + members.length + " 人 · " + esc(circle.status) + "</div>";
+    html += "<div style='font-size:13px;color:var(--muted);margin-bottom:8px;'>议题 <b style='color:var(--ink)'>" + esc(circle.name) + "</b> · 已入座 " + members.length + " 人 · " + esc(circle.status) + " · 当前发言权 " + esc(short(floorSub || "—")) + (me === floorSub ? "（轮到你写拍板句）" : "") + "</div>";
     html += "<div style='margin-bottom:4px;'>成员：</div>";
     members.forEach(function (m) {
-      var cls = "pill" + (m.sub === me ? " me" : "") + (m.role === "organizer" ? " org" : "");
-      html += "<span class='" + cls + "'>" + esc(short(m.sub)) + (m.role === "organizer" ? " · A" : "") + "</span>";
+      var cls = "pill" + (m.sub === me ? " me" : "") + (m.role === "organizer" ? " org" : "") + (m.sub === floorSub ? " floor" : "");
+      html += "<span class='" + cls + "'>" + esc(short(m.sub)) + (m.role === "organizer" ? " · A" : "") + (m.sub === floorSub ? " · 地板" : "") + "</span>";
     });
 
     if (!proposals.length) {
@@ -433,8 +439,8 @@
         var pid = btn.getAttribute("data-ack");
         api("/circle/api/ack", "POST", { circle_id: state.circleId, proposal_id: pid })
           .then(function (jj) {
-            show($("seat-msg"), jj.can_complete ? "ok" : "ok",
-              jj.can_complete ? "已确认，本场达成共识。" : "已确认（等待其他人）");
+            show($("seat-msg"), "ok",
+              jj.can_complete ? "已确认，本场达成共识。" + (jj.floor_sub ? " 发言权交给 " + short(jj.floor_sub) : "") : "已确认（等待其他人）");
             refresh();
           }).catch(function (e) { show($("seat-msg"), "err", "确认失败：" + e.message); });
       });

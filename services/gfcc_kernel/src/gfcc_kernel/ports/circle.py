@@ -21,6 +21,24 @@ def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
 
 
+def next_floor(members: List[Dict[str, Any]], current_sub: str) -> Optional[str]:
+    """发言权下一位（施工单 §4.4）：按 members 入座顺序循环。
+
+    - members 为空 → None（无人可持地板）
+    - current_sub 仍在 members → members[(i + 1) % n]（两人圈 A→B→A）
+    - current_sub 已不在（已 leave）→ members[0]（离开者不算当前位，
+      从队首续轮；leave 触发 4.2 交接时即走到这里）
+    """
+    subs = [m["sub"] for m in members]
+    n = len(subs)
+    if n == 0:
+        return None
+    if current_sub in subs:
+        i = subs.index(current_sub)
+        return subs[(i + 1) % n]
+    return subs[0]
+
+
 class CircleAdapter:
     """围坐容器 stub。内存实现，空数据合法。"""
 
@@ -51,6 +69,7 @@ class CircleAdapter:
                 "created_by": proposer_sub,
                 "created_at": _now(),
                 "dissolved_at": None,
+                "floor_sub": proposer_sub,  # 建圈者先持地板（§4.1）
             }
             self._circles[cid] = circle
         return PortOpResult(ok=True, id=cid, data={"circle_id": cid, "circle": circle})
@@ -89,7 +108,24 @@ class CircleAdapter:
             circle["members"] = [m for m in circle["members"] if m["sub"] != participant_sub]
             if len(circle["members"]) == before:
                 return PortOpResult(ok=False, error="not a member")
+            if circle.get("floor_sub") == participant_sub:
+                # §4.2 地板交接：当前持有者离场 → 交给剩余成员下一位
+                circle["floor_sub"] = next_floor(circle["members"], participant_sub)
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "members": circle["members"]})
+
+    def advance_floor(self, circle_id: str, current_sub: str) -> PortOpResult:
+        """§4.3 达成一条后轮询交接：地板从 current_sub 交给下一位。
+
+        仅当 current_sub 仍在座时按顺序轮换；调用方（circle_web.api_ack）
+        先校验 floor_sub == 提议人 再调，避免「提议人已 leave、地板已在
+        4.2 交接」时多跳一格。
+        """
+        with self._lock:
+            circle = self._circles.get(circle_id)
+            if circle is None:
+                return PortOpResult(ok=False, error=f"circle not found: {circle_id}")
+            circle["floor_sub"] = next_floor(circle["members"], current_sub)
+        return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "floor_sub": circle["floor_sub"]})
 
     def get(self, circle_id: str) -> PortOpResult:
         with self._lock:

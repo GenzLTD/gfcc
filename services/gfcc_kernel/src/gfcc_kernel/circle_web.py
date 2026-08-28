@@ -11,9 +11,11 @@
 - 认证：复用 ethos Bearer（HS256 严格模式；stub 模式空 token 仅本地联调）。
 - 复用 circle / consensus 端口适配器（进程内，单 worker 语义，一场围坐足够）。
 - 围坐 API 刻意挂在 /circle 前缀，不占 /v1/：天翼 nginx 的 /v1/ 已反代 Looma。
-- 任一已入座成员都能写拍板句（现实会议：谁都可以提议题；组织者中途离场后
-  圈内仍可继续研讨下一条，不必重建圈子）；旁观 C 不入座（只轮询 status，用
-  自己的令牌即可看），未进 parties 时 ack 会被端口拒绝（not a party）。
+- 发言权轮询（施工单「围坐会场_发言权轮询实施.md」）：建圈者先持地板，
+  只有当前 floor_sub 能 propose；一条 consensus_verified 后按入座顺序交给
+  下一位（两人圈 A→B→A）；一次一条（pending 时后端拒绝再提）；提议人中途
+  leave 后地板已在 leave 时交接，达成后不再多跳一格。旁观 C 不入座（只轮询
+  status，用自己的令牌即可看），未进 parties 时 ack 会被端口拒绝（not a party）。
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from pydantic import BaseModel
 from . import app as _app
 from . import invites as _invites
 from . import tokens as _tokens
+from .ports.circle import next_floor
 
 logger = logging.getLogger("gfcc_kernel.circle_web")
 
@@ -183,12 +186,12 @@ class ProposeBody(BaseModel):
 
 @router.post("/api/propose")
 async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
-    """已入座成员写拍板句：propose + score 一步到位。
+    """发言权持有者写拍板句：propose + score 一步到位（施工单 §5）。
 
-    - 任一已入座成员（含 participant）都能写：现实会议谁都可以提议题；
-      组织者（建圈者）中途离场后，圈内其余成员仍能继续提交下一条拍板，
-      不必重建圈子（修复：原「仅 organizer 可 propose」在组织者离场后
-      导致全场禁言，只能新建圈）。
+    - 只有当前 floor_sub（发言权持有者）能写；建圈者先持地板，一条
+      consensus_verified 后按入座顺序交给下一位（两人圈 A→B→A）。
+    - 一次一条：圈内已有未达成提案（pending）时后端同样拒绝再提议，
+      不只靠前端藏按钮。
     - parties = 当前圈内全部已入座成员；提交后直接进入 awaiting_ack，
       之后每位 party 各自点确认（/api/ack）。
     - score 仅用于跨过阈值进入 awaiting_ack；evidence 是 proposer 本人的依据
@@ -199,9 +202,14 @@ async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
     roles = {m["sub"]: m.get("role", "participant") for m in circle["members"]}
     if sub not in roles:
         raise HTTPException(status_code=403, detail="only seated members may propose")
+    if circle.get("floor_sub") != sub:
+        raise HTTPException(status_code=403, detail="not your floor")
     member_subs = list(roles)
     if len(member_subs) < 2:
         raise HTTPException(status_code=400, detail="need at least 2 seated members before proposing")
+    pending = [p for p in _proposals_in(body.circle_id) if p["status"] != "consensus_verified"]
+    if pending:
+        raise HTTPException(status_code=400, detail="pending proposal exists")
 
     consensus = _app._registry.get("consensus")
     res = consensus.propose(body.circle_id, body.subject, parties=member_subs, proposer_sub=sub)
@@ -243,24 +251,44 @@ async def api_ack(request: Request, body: AckBody) -> Dict[str, Any]:
     res = consensus.acknowledge(body.proposal_id, sub)
     if not res.ok:
         raise HTTPException(status_code=400, detail=res.error)
+    floor_sub = None
+    if res.data["can_complete"]:
+        # §4.3 达成一条 → 轮询交接：地板从提议人交给下一位。
+        # 仅当地板还在提议人身上时 advance（提议人中途 leave 的话，
+        # 地板已在 leave 时交接，这里不再多跳一格）。
+        proposer = res.data["proposal"].get("created_by")
+        circle = _circle(body.circle_id)
+        if circle.get("floor_sub") == proposer:
+            adv = _app._registry.get("circle").advance_floor(body.circle_id, proposer)
+            if adv.ok:
+                floor_sub = adv.data["floor_sub"]
     return {
         "circle_id": body.circle_id,
         "proposal_id": body.proposal_id,
         "proposal": res.data["proposal"],
         "can_complete": res.data["can_complete"],
+        "floor_sub": floor_sub,
     }
 
 
 @router.get("/api/status")
 async def api_status(request: Request, circle_id: str) -> Dict[str, Any]:
-    """圈状态：成员 + 拍板句 + 确认进度。
+    """圈状态：成员 + 拍板句 + 确认进度 + 当前发言权（floor）。
 
     需 Bearer：旁观 C 也要自己的令牌才能看（安全），但不必入座。
+    floor_sub = 当前发言权持有者；floor_next_sub = 本条达成后交给谁（4.4 预览）。
     """
     _sub(request)
     circle = _circle(circle_id)
     proposals = _proposals_in(circle_id)
-    return {"circle": circle, "proposals": proposals}
+    floor_sub = circle.get("floor_sub")
+    floor_next_sub = next_floor(circle.get("members", []), floor_sub) if floor_sub else None
+    return {
+        "circle": circle,
+        "proposals": proposals,
+        "floor_sub": floor_sub,
+        "floor_next_sub": floor_next_sub,
+    }
 
 
 @router.get("/api/me")
