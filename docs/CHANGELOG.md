@@ -2,6 +2,7 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `feat(circle)` 围坐会场首场内测（2026-08-28）：`/circle/` 单页公网入口，jason / tester-b / tester-c 三令牌实测本人确认链路（建圈→入座→旁观→拍板→本人确认→达成→连续推进→换人当组织者）。修复 3 问题：①组织者视角大字展示圈号本体（UUID 可复制）+ 分享链接（建圈成功时同样展示）；②入座失败根因=议题名当圈号，md5 核对排除代码问题后同处 UI 根治；③旁观提示「只旁观·先只看」「只能看不能确认」，旁观不显示确认按钮，一次只推进一条共识。**验的是本人确认链路**，兑现 / C 升级 / 记忆引用未做；圈与共识仍在内存，远程无 JWT 无法复验账本 id。纪要见 [`docs/reviews/围坐会场内测纪要_2026-08-28.md`](reviews/围坐会场内测纪要_2026-08-28.md)。
 - `feat(kernel)` Step 1 记忆体按人隔离（2026-08-27）：`query`/`get`/`recall` 必带 `actor_sub`；无 sub 不落 `"system"`；HS256 无 token / 坏 token → 401。签发脚本 `scripts/issue_persona_tokens.py`。验收见 [`docs/reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md`](reviews/Step1_每人一个sub记忆体隔离_验收_2026-08-27.md)。运行树 `~/Projects/gfcc`。
 - `docs` 2026-08-27 按现况修订：[`VERSIONING.md`](VERSIONING.md)（P3 已完、硬化可排期、实现债≠契约 bump、ack 不得被录像代替）；testers 须知 / MVP 内测手册（会场 ≠ PlanetX；令牌 ≠ Tatha 演示桩；验证 = 人↔sub↔id）；MVP 清单 G6 写明圈/共识仍内存；联邦方案标题与 §8.4 边界 2 关闭 P3；硬化 R4 与 L5 对账。
 - `docs` 环 2 信号段通过（2026-08-26 夜）：天翼 `signal_log` 3 行 `consensus_match`（nonce 已记）；G3 双信号云上复现完成。见 [`docs/联邦测试闭环方案.md`](联邦测试闭环方案.md) §8.5。下一层 P3（已于 2026-08-27 归档）；不合 `main`。

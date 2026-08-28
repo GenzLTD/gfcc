@@ -93,9 +93,28 @@ class JoinBody(BaseModel):
 
 @router.post("/api/join")
 async def api_join(request: Request, body: JoinBody) -> Dict[str, Any]:
-    """B（或 C）入座。重复入座 / 已解散圈子 → 400。"""
+    """B（或 C）入座。重复入座视为重新入座（幂等）；已解散圈子 → 400。"""
     sub = _sub(request)
     res = _app._registry.get("circle").join(body.circle_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": res.id, "members": res.data["members"]}
+
+
+class LeaveBody(BaseModel):
+    circle_id: str
+
+
+@router.post("/api/leave")
+async def api_leave(request: Request, body: LeaveBody) -> Dict[str, Any]:
+    """本人退场：把自己从圈成员中移除、释放席位。
+
+    退出只是本地清 token 的话后端席位还在，重新入座会撞
+    "already a member"；因此前端「退出」按钮必须先调这里。
+    退场后同一令牌可随时重新入座（join 幂等）。
+    """
+    sub = _sub(request)
+    res = _app._registry.get("circle").leave(body.circle_id, sub)
     if not res.ok:
         raise HTTPException(status_code=400, detail=res.error)
     return {"circle_id": res.id, "members": res.data["members"]}

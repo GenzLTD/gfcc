@@ -63,7 +63,13 @@ class CircleAdapter:
             if circle["status"] != "active":
                 return PortOpResult(ok=False, error=f"circle not joinable: status={circle['status']}")
             if any(m["sub"] == participant_sub for m in circle["members"]):
-                return PortOpResult(ok=False, error="already a member")
+                # 幂等：已入座则视为重新入座成功（配合 leave 释放席位后重进，
+                # 也避免「退出未清后端」导致永远进不去）
+                return PortOpResult(
+                    ok=True,
+                    id=circle_id,
+                    data={"circle_id": circle_id, "members": circle["members"], "rejoined": True},
+                )
             circle["members"].append(
                 {
                     "sub": participant_sub,
