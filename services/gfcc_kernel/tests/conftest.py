@@ -5,6 +5,8 @@ app 单例在 import 时会读真实配置并把数据写进 data/memory.db，�
 确定性。conftest.py 在收集阶段先于任何测试模块执行，保证：
 
 - STORE_PROVIDER=stub：单测不触碰真实 SQLite 库
+- CIRCLE_FLOW_PROVIDER=stub：G6 会务态落库默认跟随 STORE_PROVIDER，这里显式钉死
+  （单测纯内存；落库用例自建临时库 CIRCLE_FLOW_DB → tmp_path）
 - LLM_PROVIDER=stub：单测不依赖本地 Ollama（与 CI 无 .env 环境对齐）
 - SIGNAL_INGEST_SECRET 留空：signal-ingest 默认走 dev 免签分支
   （验签分支由用例内 monkeypatch 单独覆盖）
@@ -15,6 +17,7 @@ app 单例在 import 时会读真实配置并把数据写进 data/memory.db，�
 import os
 
 os.environ["STORE_PROVIDER"] = "stub"
+os.environ["CIRCLE_FLOW_PROVIDER"] = "stub"
 os.environ["LLM_PROVIDER"] = "stub"
 os.environ.pop("SIGNAL_INGEST_SECRET", None)
 os.environ["ETHOS_AUTH_SECRET"] = ""

@@ -40,11 +40,20 @@ def next_floor(members: List[Dict[str, Any]], current_sub: str) -> Optional[str]
 
 
 class CircleAdapter:
-    """围坐容器 stub。内存实现，空数据合法。"""
+    """围坐容器。内存为读缓存，变更同步写 circle_flow（G6）；无 flow 时纯内存。"""
 
-    def __init__(self) -> None:
+    def __init__(self, flow: Optional[CircleFlowStore] = None) -> None:
         self._lock = threading.Lock()
         self._circles: Dict[str, Dict[str, Any]] = {}
+        self._flow = flow
+        if flow is not None:
+            self._hydrate()
+
+    def _hydrate(self) -> None:
+        """启动恢复：从库读回圈与成员（含 dissolved 历史，dissolve 不删行）。"""
+        for c in self._flow.list_circles():
+            c["members"] = self._flow.list_members(c["id"])
+            self._circles[c["id"]] = c
 
     # ------------------------------------------------------------------ #
     # operations
@@ -72,6 +81,9 @@ class CircleAdapter:
                 "floor_sub": proposer_sub,  # 建圈者先持地板（§4.1）
             }
             self._circles[cid] = circle
+        if self._flow is not None:
+            # G6：圈 + 首成员（organizer）同事务落库
+            self._flow.create_circle(circle, circle["members"][0])
         return PortOpResult(ok=True, id=cid, data={"circle_id": cid, "circle": circle})
 
     def join(self, circle_id: str, participant_sub: str, builder_tags: Optional[List[str]] = None) -> PortOpResult:
@@ -89,14 +101,15 @@ class CircleAdapter:
                     id=circle_id,
                     data={"circle_id": circle_id, "members": circle["members"], "rejoined": True},
                 )
-            circle["members"].append(
-                {
-                    "sub": participant_sub,
-                    "role": "participant",
-                    "builder_tags": builder_tags or [],
-                    "joined_at": _now(),
-                }
-            )
+            member = {
+                "sub": participant_sub,
+                "role": "participant",
+                "builder_tags": builder_tags or [],
+                "joined_at": _now(),
+            }
+            circle["members"].append(member)
+        if self._flow is not None:
+            self._flow.upsert_member(circle_id, member)
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "members": circle["members"]})
 
     def leave(self, circle_id: str, participant_sub: str) -> PortOpResult:
@@ -108,24 +121,35 @@ class CircleAdapter:
             circle["members"] = [m for m in circle["members"] if m["sub"] != participant_sub]
             if len(circle["members"]) == before:
                 return PortOpResult(ok=False, error="not a member")
+            new_floor: Optional[str] = None
             if circle.get("floor_sub") == participant_sub:
                 # §4.2 地板交接：当前持有者离场 → 交给剩余成员下一位
                 circle["floor_sub"] = next_floor(circle["members"], participant_sub)
+                new_floor = circle["floor_sub"]
+        if self._flow is not None:
+            # G6：删成员 + 地板交接同事务（不出现「成员已删、地板仍指离开者」半态）
+            self._flow.remove_member_and_floor(circle_id, participant_sub, new_floor)
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "members": circle["members"]})
 
-    def advance_floor(self, circle_id: str, current_sub: str) -> PortOpResult:
+    def advance_floor(self, circle_id: str, current_sub: str, *, persist: bool = True) -> PortOpResult:
         """§4.3 达成一条后轮询交接：地板从 current_sub 交给下一位。
 
         仅当 current_sub 仍在座时按顺序轮换；调用方（circle_web.api_ack）
         先校验 floor_sub == 提议人 再调，避免「提议人已 leave、地板已在
         4.2 交接」时多跳一格。
+
+        persist=False：只改内存，库写交给调用方的事务（G6 决策②，
+        api_ack 用 verify_and_advance_floor 同事务写 verified + 地板）。
         """
         with self._lock:
             circle = self._circles.get(circle_id)
             if circle is None:
                 return PortOpResult(ok=False, error=f"circle not found: {circle_id}")
             circle["floor_sub"] = next_floor(circle["members"], current_sub)
-        return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "floor_sub": circle["floor_sub"]})
+            floor_sub = circle["floor_sub"]
+        if self._flow is not None and persist:
+            self._flow.set_floor(circle_id, floor_sub)
+        return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "floor_sub": floor_sub})
 
     def get(self, circle_id: str) -> PortOpResult:
         with self._lock:
@@ -144,6 +168,8 @@ class CircleAdapter:
             if organizer_sub != circle["created_by"]:
                 return PortOpResult(ok=False, error="only creator/organizer may pause")
             circle["status"] = "paused"
+        if self._flow is not None:
+            self._flow.update_circle_status(circle_id, "paused")
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "status": "paused"})
 
     def dissolve(self, circle_id: str, organizer_sub: str) -> PortOpResult:
@@ -156,6 +182,10 @@ class CircleAdapter:
                 return PortOpResult(ok=False, error="only creator/organizer may dissolve")
             circle["status"] = "dissolved"
             circle["dissolved_at"] = _now()
+            dissolved_at = circle["dissolved_at"]
+        if self._flow is not None:
+            # G6：dissolve 不删行（历史保留），只写 status + dissolved_at
+            self._flow.update_circle_status(circle_id, "dissolved", dissolved_at)
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "status": "dissolved"})
 
     # ------------------------------------------------------------------ #

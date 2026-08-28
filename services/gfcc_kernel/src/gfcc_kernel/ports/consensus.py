@@ -31,13 +31,23 @@ def _now() -> str:
 
 
 class ConsensusAdapter:
-    """共议 stub。内存实现，空数据合法。"""
+    """共议。内存为读缓存，变更同步写 circle_flow（G6）；无 flow 时纯内存。"""
 
-    def __init__(self, threshold: int = DEFAULT_THRESHOLD) -> None:
+    def __init__(self, threshold: int = DEFAULT_THRESHOLD, flow: Optional[CircleFlowStore] = None) -> None:
         self._lock = threading.Lock()
         self._threshold = max(0, min(100, threshold))
         self._proposals: Dict[str, Dict[str, Any]] = {}
         self._signal_evidence: List[Dict[str, Any]] = []
+        self._flow = flow
+        if flow is not None:
+            self._hydrate()
+
+    def _hydrate(self) -> None:
+        """启动恢复：从库读回提案。verified_at 落库但内存不暴露该键（形状与今天一致）。"""
+        for p in self._flow.list_proposals():
+            p["acks"] = self._flow.list_acks(p["id"])
+            p.pop("verified_at", None)
+            self._proposals[p["id"]] = p
 
     # ------------------------------------------------------------------ #
     # operations
@@ -64,6 +74,8 @@ class ConsensusAdapter:
                 "created_by": proposer_sub,
                 "created_at": _now(),
             }
+        if self._flow is not None:
+            self._flow.insert_proposal(self._proposals[pid])
         return PortOpResult(ok=True, id=pid, data={"proposal_id": pid, "proposal": self._proposals[pid]})
 
     def score(self, proposal_id: str, score: float, evidence: List[Dict[str, Any]]) -> PortOpResult:
@@ -84,10 +96,16 @@ class ConsensusAdapter:
             if score < self._threshold:
                 prop["status"] = "below_threshold"
             else:
-                prop["status"] = "consensus_passed"
-                # 进入 awaiting_ack（契约：passed 后仍需人工确认）
+                # 契约：passed 后仍需人工确认 → awaiting_ack
                 prop["status"] = "awaiting_ack"
-            return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop), "threshold": self._threshold})
+        if self._flow is not None:
+            self._flow.update_proposal(
+                proposal_id,
+                status=prop["status"],
+                score=prop["score"],
+                score_evidence=prop["score_evidence"],
+            )
+        return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop), "threshold": self._threshold})
 
     def acknowledge(self, proposal_id: str, ack_sub: str, actor_is_ai: bool = False) -> PortOpResult:
         """人工 party 确认。AI 不能 ack。全部 party ack → consensus_verified。"""
@@ -108,10 +126,14 @@ class ConsensusAdapter:
                 prop["status"] = "consensus_verified"
             else:
                 prop["status"] = "awaiting_ack"
-            return PortOpResult(
-                ok=True, id=proposal_id,
-                data={"proposal": dict(prop), "can_complete": prop["status"] == "consensus_verified"},
-            )
+        # G6 落库：非 verified 直接写；verified 由 api_ack 的
+        # verify_and_advance_floor 同事务写（含地板轮转，见 circle_web.api_ack）
+        if self._flow is not None and prop["status"] != "consensus_verified":
+            self._flow.append_ack(proposal_id, ack_sub, prop["acks"][-1]["at"], prop["status"])
+        return PortOpResult(
+            ok=True, id=proposal_id,
+            data={"proposal": dict(prop), "can_complete": prop["status"] == "consensus_verified"},
+        )
 
     def get_status(self, proposal_id: str) -> PortOpResult:
         with self._lock:
@@ -136,6 +158,8 @@ class ConsensusAdapter:
             if prop["status"] == "consensus_verified":
                 return PortOpResult(ok=False, error="verified proposal cannot be expired")
             prop["status"] = "expired"
+        if self._flow is not None:
+            self._flow.update_proposal(proposal_id, status=prop["status"])
         return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop)})
 
     # ------------------------------------------------------------------ #

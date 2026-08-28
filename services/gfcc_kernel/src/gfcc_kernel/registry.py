@@ -41,13 +41,13 @@ class KernelContext:
 class PortRegistry:
     """注册表：端口名 → 适配器。加能力 = 注册适配器，不增长 intent 表。"""
 
-    def __init__(self, threshold: int = 85, store: Optional[Any] = None) -> None:
+    def __init__(self, threshold: int = 85, store: Optional[Any] = None, flow: Optional[Any] = None) -> None:
         self._store = store or StubStore()
         self._session = SessionStore()
-        self._circle = CircleAdapter()
+        self._circle = CircleAdapter(flow=flow)
         self._identity = IdentityAdapter()
         self._memory = MemoryAdapter(store=self._store)
-        self._consensus = ConsensusAdapter(threshold=threshold)
+        self._consensus = ConsensusAdapter(threshold=threshold, flow=flow)
         self._contribution = ContributionAdapter()
         self._ports: Dict[str, Any] = {
             "circle": self._circle,

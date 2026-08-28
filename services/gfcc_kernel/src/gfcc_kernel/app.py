@@ -17,6 +17,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from .circle_flow import get_store as build_circle_flow
 from .circle_web import router as circle_web_router
 from .dispatcher import parse_then_dispatch
 from .envelope import AskRequest, AskResponse
@@ -50,6 +51,7 @@ _store = build_store()
 _registry = PortRegistry(
     threshold=int(os.getenv("CONSENSUS_THRESHOLD", "85")),
     store=_store,
+    flow=build_circle_flow(),
 )
 _security = build_security()
 _policy = KernelPolicy(_security)

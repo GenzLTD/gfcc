@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 # 延迟到函数体内访问 app 单例（避免与 app.py 循环 import）
 from . import app as _app
+from . import circle_flow as _flow_mod
 from . import invites as _invites
 from . import tokens as _tokens
 from .ports.circle import next_floor
@@ -259,9 +260,22 @@ async def api_ack(request: Request, body: AckBody) -> Dict[str, Any]:
         proposer = res.data["proposal"].get("created_by")
         circle = _circle(body.circle_id)
         if circle.get("floor_sub") == proposer:
-            adv = _app._registry.get("circle").advance_floor(body.circle_id, proposer)
+            # persist=False：不单独写库，库写交给下方 verify_and_advance_floor 同事务
+            adv = _app._registry.get("circle").advance_floor(body.circle_id, proposer, persist=False)
             if adv.ok:
                 floor_sub = adv.data["floor_sub"]
+        # G6 决策②：ack 达成 + 地板轮转同事务落库（库中不会出现
+        # 「已 verified 而地板未转」的半态）
+        flow = _flow_mod.get_store()
+        if flow is not None:
+            flow.verify_and_advance_floor(
+                body.proposal_id,
+                body.circle_id,
+                status=res.data["proposal"]["status"],
+                verified_at=res.data["proposal"]["acks"][-1]["at"],
+                acks=res.data["proposal"]["acks"],
+                floor_sub=floor_sub,
+            )
     return {
         "circle_id": body.circle_id,
         "proposal_id": body.proposal_id,
