@@ -11,8 +11,9 @@
 - 认证：复用 ethos Bearer（HS256 严格模式；stub 模式空 token 仅本地联调）。
 - 复用 circle / consensus 端口适配器（进程内，单 worker 语义，一场围坐足够）。
 - 围坐 API 刻意挂在 /circle 前缀，不占 /v1/：天翼 nginx 的 /v1/ 已反代 Looma。
-- 拍板句只允许建圈的 organizer（A）写；旁观 C 不入座（只轮询 status，用自己的
-  令牌即可看），未进 parties 时 ack 会被端口拒绝（not a party）。
+- 任一已入座成员都能写拍板句（现实会议：谁都可以提议题；组织者中途离场后
+  圈内仍可继续研讨下一条，不必重建圈子）；旁观 C 不入座（只轮询 status，用
+  自己的令牌即可看），未进 parties 时 ack 会被端口拒绝（not a party）。
 """
 
 from __future__ import annotations
@@ -182,9 +183,12 @@ class ProposeBody(BaseModel):
 
 @router.post("/api/propose")
 async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
-    """A（建圈的 organizer）写拍板句：propose + score 一步到位。
+    """已入座成员写拍板句：propose + score 一步到位。
 
-    - 只有 organizer 能写，避免多成员各交一条互相覆盖。
+    - 任一已入座成员（含 participant）都能写：现实会议谁都可以提议题；
+      组织者（建圈者）中途离场后，圈内其余成员仍能继续提交下一条拍板，
+      不必重建圈子（修复：原「仅 organizer 可 propose」在组织者离场后
+      导致全场禁言，只能新建圈）。
     - parties = 当前圈内全部已入座成员；提交后直接进入 awaiting_ack，
       之后每位 party 各自点确认（/api/ack）。
     - score 仅用于跨过阈值进入 awaiting_ack；evidence 是 proposer 本人的依据
@@ -195,8 +199,6 @@ async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
     roles = {m["sub"]: m.get("role", "participant") for m in circle["members"]}
     if sub not in roles:
         raise HTTPException(status_code=403, detail="only seated members may propose")
-    if roles[sub] != "organizer":
-        raise HTTPException(status_code=403, detail="only the organizer (A) may propose")
     member_subs = list(roles)
     if len(member_subs) < 2:
         raise HTTPException(status_code=400, detail="need at least 2 seated members before proposing")

@@ -154,10 +154,10 @@
     </div>
   </section>
 
-  <!-- 3 拍板句（仅 A，已入座时可见） -->
+  <!-- 3 拍板句（任一已入座成员可见） -->
   <section class="card hidden" id="card-propose">
-    <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">组织者</span></h2>
-    <div class="desc">组织者写一句要大家一起拍板的话，再给一句话依据。每人各自确认后即达成。</div>
+    <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">成员均可</span></h2>
+    <div class="desc">任一已入座成员写一句要大家一起拍板的话，再给一句话依据。每人各自确认后即达成。</div>
     <label for="subject">拍板句</label>
     <textarea id="subject" placeholder="写一个真议题，而不是测试句（例：本周按 W4 节奏推进，周五前完成验收）"></textarea>
     <label for="basis">依据（一句话，可选）</label>
@@ -316,7 +316,7 @@
     state.circleId = cid;
     sessionStorage.setItem("gfcc_circle_id", cid);
     api("/circle/api/join", "POST", { circle_id: cid }).then(function () {
-      show($("seat-msg"), "ok", "已入座，等待组织者提交拍板句后确认");
+      show($("seat-msg"), "ok", "已入座，等待成员提交拍板句后确认");
       enterCircle(cid);
     }).catch(function (e) { show($("seat-msg"), "err", "入座失败：" + e.message); });
   });
@@ -369,18 +369,19 @@
     var me = state.sub;
     var myRole = null;
     members.forEach(function (m) { if (m.sub === me) myRole = m.role; });
-    var isOrg = myRole === "organizer";
+    var isSeated = myRole !== null;
 
-    // 拍板卡片：仅组织者且已入座可见；有未达成拍板句时收起（一次只推进一条共识）
+    // 拍板卡片：任一已入座成员可见（组织者离场后仍可继续研讨下一条）；
+    // 有未达成拍板句时收起（一次只推进一条共识）
     var pendingCount = proposals.filter(function (p) { return p.status !== "consensus_verified"; }).length;
-    if (isOrg && !pendingCount) {
+    if (isSeated && !pendingCount) {
       showEl($("card-propose"));
     } else {
       hideEl($("card-propose"));
     }
 
     var html = "";
-    if (isOrg) {
+    if (isSeated) {
       var shareLink = location.origin + location.pathname + "?c=" + state.circleId;
       html += "<div class='desc' style='margin-top:4px;'>发给其他与会者的链接（已带圈号）：</div>";
       html += "<div class='big-cid'>" + esc(shareLink) + "</div>";
@@ -398,7 +399,7 @@
     });
 
     if (!proposals.length) {
-      html += "<div class='banner warn' style='display:block;'>还没有拍板句，等组织者提交。</div>";
+      html += "<div class='banner warn' style='display:block;'>还没有拍板句，等成员提交。</div>";
     } else {
       proposals.forEach(function (p) {
         var acks = p.acks || [], parties = p.parties || [];

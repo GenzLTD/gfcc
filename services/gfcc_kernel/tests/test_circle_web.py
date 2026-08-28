@@ -159,8 +159,8 @@ def test_propose_requires_member() -> None:
         assert r.status_code == 403
 
 
-def test_propose_organizer_only() -> None:
-    """B 已入座也不能写拍板句：只有建圈的 A（organizer）能写，避免互相覆盖。"""
+def test_any_seated_member_can_propose() -> None:
+    """任一已入座成员都能写拍板句（现实会议：谁都可以提议题）。"""
     with TestClient(kernel_app) as client:
         cid = _create_circle(client)
         client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
@@ -169,8 +169,57 @@ def test_propose_organizer_only() -> None:
             json={"circle_id": cid, "subject": "B 也想写一句"},
             headers=_auth(TOKEN_B),
         )
-        assert r.status_code == 403
-        assert "organizer" in r.json()["detail"]
+        assert r.status_code == 200, r.text
+        assert set(r.json()["proposal"]["parties"]) == {"tester-a", "tester-b"}
+
+
+def test_can_continue_propose_after_organizer_leave() -> None:
+    """回归：组织者离场后，圈内参与者仍能继续提交下一条拍板，不必重建圈。
+
+    复现真实场景：A（organizer）拍板一条后 leave，圈里只剩 B/C 两名 participant，
+    修复前 propose 返回 403（only the organizer may propose）→ 只能新建圈。
+    """
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+
+        # A 拍板第一条并双方确认（开发调试由 Jason 承担）
+        r = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "开发调试由 Jason 承担"},
+            headers=_auth(TOKEN_A),
+        )
+        pid = r.json()["proposal_id"]
+        client.post("/circle/api/ack", json={"circle_id": cid, "proposal_id": pid}, headers=_auth(TOKEN_A))
+        r = client.post("/circle/api/ack", json={"circle_id": cid, "proposal_id": pid}, headers=_auth(TOKEN_B))
+        assert r.json()["proposal"]["status"] == "consensus_verified"
+
+        # C 入座，A（organizer）离场 → 圈里只剩 B/C 两个 participant
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r = client.post("/circle/api/leave", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        assert r.status_code == 200
+
+        # 修复前：B 再 propose → 403（圈里没有 organizer）→ 只能新建圈
+        # 修复后：任一已入座成员可 propose，同圈继续轮询下一条分工
+        r = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "业务运维由 B 承担"},
+            headers=_auth(TOKEN_B),
+        )
+        assert r.status_code == 200, r.text
+        pid2 = r.json()["proposal_id"]
+        assert set(r.json()["proposal"]["parties"]) == {"tester-b", "tester-c"}
+
+        # 两人各自确认 → 第二条也达成
+        client.post("/circle/api/ack", json={"circle_id": cid, "proposal_id": pid2}, headers=_auth(TOKEN_B))
+        r = client.post("/circle/api/ack", json={"circle_id": cid, "proposal_id": pid2}, headers=_auth(TOKEN_C))
+        assert r.json()["proposal"]["status"] == "consensus_verified"
+
+        # 同圈内两条共识都落账，无需新建圈
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_B))
+        body = r.json()
+        assert len(body["proposals"]) == 2
+        assert all(p["status"] == "consensus_verified" for p in body["proposals"])
 
 
 def test_ack_not_party_rejected() -> None:
