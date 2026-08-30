@@ -725,3 +725,199 @@ def test_promote_requires_organizer() -> None:
         )
         assert r.status_code == 403
         assert "organizer" in r.json()["detail"]
+
+
+def _seat_two(client: TestClient, name: str = "围坐") -> str:
+    cid = _create_circle(client, name)
+    r = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+    assert r.status_code == 200, r.text
+    return cid
+
+
+def _propose(client: TestClient, cid: str, subject: str = "拍板句", token: str = TOKEN_A) -> str:
+    r = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": subject, "basis": "依据"},
+        headers=_auth(token),
+    )
+    assert r.status_code == 200, r.text
+    return r.json()["proposal_id"]
+
+
+def test_page_contains_proposer_ack_hint() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "你也要点" in r.text or "你也需要" in r.text or "你自己" in r.text
+
+
+def test_propose_does_not_auto_ack_proposer() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        r = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "不自动确认", "basis": "x"},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()["proposal"]
+        assert body["acks"] == []
+        assert body["status"] == "awaiting_ack"
+
+
+def test_page_strips_whitespace_in_entry() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert r"replace(/\s+/g" in r.text
+
+
+def test_page_has_401_hint() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "检查令牌是否完整" in r.text
+        assert "eyJ" in r.text
+
+
+def test_stub_empty_token_still_200() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/api/me")
+        assert r.status_code == 200
+
+
+def test_redeem_hint_unchanged() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "请向主持人再要一条链接" in r.text
+
+
+def test_http_reject_flow() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        pid = _propose(client, cid, "可被异议")
+        r = client.post(
+            "/circle/api/reject",
+            json={"circle_id": cid, "proposal_id": pid, "reason": "表述不准确"},
+            headers=_auth(TOKEN_B),
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()["proposal"]
+        assert body["status"] == "rejected"
+        assert body["reject_reason"] == "表述不准确"
+        r2 = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "改提新句", "basis": "y"},
+            headers=_auth(TOKEN_A),
+        )
+        assert r2.status_code == 200, r2.text
+
+
+def test_reject_unknown_proposal_404() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        r = client.post(
+            "/circle/api/reject",
+            json={"circle_id": cid, "proposal_id": "no-such", "reason": "x"},
+            headers=_auth(TOKEN_A),
+        )
+        assert r.status_code == 404
+
+
+def test_page_contains_objection_copy() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "有异议" in r.text
+        assert "阐述观点" in r.text
+        assert "/circle/api/reject" in r.text
+
+
+def test_page_rejected_tag_and_terminal_filter() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "已驳回" in r.text
+        assert "rejected" in r.text
+        assert '!== "consensus_verified"' not in r.text
+
+
+def test_http_withdraw_flow() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        pid = _propose(client, cid, "可撤回")
+        r_b = client.post(
+            "/circle/api/withdraw",
+            json={"circle_id": cid, "proposal_id": pid},
+            headers=_auth(TOKEN_B),
+        )
+        assert r_b.status_code == 400
+        r_a = client.post(
+            "/circle/api/withdraw",
+            json={"circle_id": cid, "proposal_id": pid},
+            headers=_auth(TOKEN_A),
+        )
+        assert r_a.status_code == 200, r_a.text
+        assert r_a.json()["proposal"]["status"] == "withdrawn"
+
+
+def test_page_contains_withdraw_copy() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "撤回" in r.text
+        assert "/circle/api/withdraw" in r.text
+
+
+def test_http_dissolve_only_creator() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        r_b = client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        assert r_b.status_code == 403
+        r_a = client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        assert r_a.status_code == 200, r_a.text
+        assert r_a.json()["status"] == "dissolved"
+
+
+def test_dissolve_then_join_rejected() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        r = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        assert r.status_code == 400
+        assert "not joinable" in r.json()["detail"]
+
+
+def test_dissolve_then_writes_rejected() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _seat_two(client)
+        pid = _propose(client, cid, "解散前一句")
+        r = client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        assert r.status_code == 200, r.text
+        for path, body in (
+            ("/circle/api/propose", {"circle_id": cid, "subject": "不能再提", "basis": "x"}),
+            ("/circle/api/ack", {"circle_id": cid, "proposal_id": pid}),
+            ("/circle/api/reject", {"circle_id": cid, "proposal_id": pid, "reason": "x"}),
+            ("/circle/api/withdraw", {"circle_id": cid, "proposal_id": pid}),
+        ):
+            rr = client.post(path, json=body, headers=_auth(TOKEN_A))
+            assert rr.status_code == 400, (path, rr.text)
+            assert rr.json()["detail"] == "circle dissolved"
+
+
+def test_dissolve_then_status_shows_dissolved() -> None:
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_A))
+        assert r.status_code == 200
+        assert r.json()["circle"]["status"] == "dissolved"
+
+
+def test_page_contains_dissolve_copy() -> None:
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "解散本场" in r.text
+        assert "/circle/api/dissolve" in r.text

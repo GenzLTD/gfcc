@@ -12,7 +12,7 @@
 | **L-1 价值层** | [`docs/vision.md`](../vision.md) | 不参与执行；**约束一切变更**。先过「人是目的 / 成功判据」再改契约 |
 | **L0 真源** | 本页 · `contracts/*.v1.json` | 实现、演示栈、文档示例都向它适配 |
 | **L1 内核** | ethos 验证 · `POST /v1/ask` 信封 · 五槽 | 只认端口接口，不认服务名 |
-| **L2 默认组合** | kernel + 五个一等端口（stub 合法） | 空数据合法。**实现对照（非契约，2026-08-28）**：sqlite 持久化 `memory_records` + `signal_log` + 圈态库 `circle_flow.db`（circle / consensus / 地板，重启不丢）；identity / session 仍内存 |
+| **L2 默认组合** | kernel + 五个一等端口（stub 合法） | 空数据合法。**实现对照（非契约，2026-08-30）**：sqlite 持久化 `memory_records` + `signal_log` + 圈态库 `circle_flow.db`（circle / consensus / 地板，重启不丢）；consensus 适配器含 `reject` / `withdraw` / `expire` / `expire_stale`；identity / session 仍内存 |
 | **L3 可选画像** | `modes/profile.demo.yaml` | 可卸载；**不得**进入 L0 必选项 |
 
 **谁是权威、谁是执行**：**gfcc = 契约层（真源）**；**Tatha = 实现层**（`POST /v1/ask` 的一个具体实现，可替换）。方法学来自 Tatha 单入口文档，不等于 Tatha 是真源。
@@ -36,7 +36,7 @@
 | **circle** | `circle.v1.json` | 围坐容器：创建 / 加入 / 解散；记忆与共识的归属 | 不是隐式字符串；解散不删历史 |
 | **identity** | `identity.v1.json` | PPI：价值观、能力轨迹、承诺、营造师标签；`sub` 绑档案 | 不是付费档；证据源白名单，无 `optional` |
 | **memory** | `memory.v1.json` | Dual 七库：**议题 / 行动 / 事件 / 方法论价值 / 人 / 组织 / 资源**；人与 AI 均可观察 | 不是个人备忘；AI 观察不得静默改写 |
-| **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据 | 不是求职匹配；失败不得自动成功；确认必须是人 |
+| **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据。1.2.0 加 `reject`/`withdraw`/`expire`（作废当前句，不改全员 ack） | 不是求职匹配；失败不得自动成功；确认必须是人 |
 | **contribution** | `contribution.v1.json` | CoCo：认定 → 兑现 → 可申诉；兑现后可回写轨迹 | 不是积分主叙事；v1 不依赖链 |
 
 默认 `tools` 清单 = 上表五端口。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。

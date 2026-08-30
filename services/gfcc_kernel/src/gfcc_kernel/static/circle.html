@@ -63,6 +63,8 @@
   button.ghost { background: #fff; color: var(--brand); border: 1px solid var(--brand); }
   button.ghost:disabled { color: #c6cdd8; border-color: var(--line); }
   button.ok { background: var(--ok); }
+  button.warn { background: var(--warn); }
+  button.danger { background: var(--err); }
   .hint { font-size: 13px; color: var(--muted); margin-top: 8px; }
   .row { display: flex; gap: 10px; }
   .row > div { flex: 1; }
@@ -95,6 +97,8 @@
   .status-tag { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; display: inline-block; margin-left: 6px; }
   .status-tag.verified { background: var(--ok-soft); color: var(--ok); }
   .status-tag.waiting { background: var(--warn-soft); color: var(--warn); }
+  .status-tag.rejected { background: var(--err-soft); color: var(--err); }
+  .status-tag.withdrawn, .status-tag.expired { background: #f2f4f8; color: var(--muted); }
   .status-tag.done { background: var(--brand-soft); color: var(--brand); }
   .who-line { font-size: 13px; color: var(--muted); margin-top: 6px; }
   .big-cid {
@@ -219,7 +223,7 @@
   // ---------- 入场 ----------
   $("btn-entry").addEventListener("click", enter);
   function enter() {
-    var t = $("token").value.trim();
+    var t = $("token").value.replace(/\s+/g, "");
     if (!t) { show($("entry-msg"), "err", "请先粘贴入场令牌"); return; }
     state.token = t;
     sessionStorage.setItem("gfcc_circle_token", t);
@@ -234,7 +238,12 @@
       var cidFromUrl = new URLSearchParams(location.search).get("c");
       if (cidFromUrl) { $("circle-id").value = cidFromUrl; }
       if (state.circleId) { $("circle-id").value = state.circleId; }
-    }).catch(function (e) { show($("entry-msg"), "err", "入场失败：" + e.message); });
+    }).catch(function (e) {
+      var msg = e.status === 401
+        ? "令牌无效或已过期，检查令牌是否完整（不要带换行/空格，应有开头 eyJ 与结尾点号），可向主持人再要一条"
+        : "入场失败：" + e.message;
+      show($("entry-msg"), "err", msg);
+    });
   }
 
   // ---------- 邀请深链兑换（?i=） ----------
@@ -371,7 +380,7 @@
     api("/circle/api/propose", "POST", {
       circle_id: state.circleId, subject: subject, basis: $("basis").value.trim(),
     }).then(function () {
-      show($("propose-msg"), "ok", "拍板句已提交，等待入座成员本人点确认（旁观不点头）");
+      show($("propose-msg"), "ok", "拍板句已提交：你也要点一次确认（下方你的确认按钮），入座成员点完才会推进。");
       show($("seat-msg"), "ok", "拍板句已提交，卡片已收起：入座成员确认达成后，发言权自动交给下一位。");
       refresh();
     }).catch(function (e) { show($("propose-msg"), "err", "提交失败：" + e.message); });
@@ -400,15 +409,24 @@
     // 有未达成拍板句时收起（一次只推进一条共识）
     var floorSub = j.floor_sub || null;
     var floorNext = j.floor_next_sub || null;
-    var pendingCount = proposals.filter(function (p) { return p.status !== "consensus_verified"; }).length;
+    var dissolved = circle.status === "dissolved";
+    var TERMINAL = ["consensus_verified", "rejected", "withdrawn", "expired", "failed"];
+    function isTerminal(st) { return TERMINAL.indexOf(st) >= 0; }
+    var pendingCount = proposals.filter(function (p) { return !isTerminal(p.status); }).length;
     var isFloor = isSeated && me === floorSub;
-    if (isFloor && !pendingCount) {
+    if (isFloor && !pendingCount && !dissolved) {
       showEl($("card-propose"));
     } else {
       hideEl($("card-propose"));
     }
 
     var html = "";
+    if (dissolved) {
+      html += "<div class='banner warn' style='display:block;'>已解散：历史保留、不能再入座。</div>";
+    }
+    if (isSeated && circle.created_by === me && !dissolved) {
+      html += "<button class='danger' data-dissolve='1'>解散本场</button>";
+    }
     if (isSeated) {
       var shareLink = location.origin + location.pathname + "?c=" + state.circleId;
       html += "<div class='desc' style='margin-top:4px;'>发给其他与会者的链接（已带圈号）：</div>";
@@ -445,21 +463,40 @@
         var verified = p.status === "consensus_verified";
         var myAcked = acks.some(function (a) { return a.sub === me; });
         var iAmParty = parties.indexOf(me) >= 0;
-        var tag = verified
-          ? "<span class='status-tag verified'>已达成</span>"
-          : "<span class='status-tag waiting'>等待确认</span>";
+        var open = !isTerminal(p.status) && !dissolved;
+        var tag;
+        if (verified) tag = "<span class='status-tag verified'>已达成</span>";
+        else if (p.status === "rejected") tag = "<span class='status-tag rejected'>已驳回</span>";
+        else if (p.status === "withdrawn") tag = "<span class='status-tag withdrawn'>已撤回</span>";
+        else if (p.status === "expired") tag = "<span class='status-tag expired'>已作废</span>";
+        else tag = "<span class='status-tag waiting'>等待确认</span>";
         var pct = parties.length ? Math.round(acks.length / parties.length * 100) : 0;
         html += "<div class='proposal'>";
         html += "<div class='subject'>" + esc(p.subject) + tag + "</div>";
         html += "<div class='progress'>已确认 " + acks.length + "/" + parties.length +
                 "<span class='bar'><i style='width:" + pct + "%'></i></span></div>";
-        html += "<div class='who-line'>需确认：" + parties.map(function (s) { return esc(short(s)); }).join("、") + "</div>";
+        html += "<div class='who-line'>需确认：" + parties.map(function (s) {
+          var label = esc(short(s));
+          if (s === me && iAmParty && !myAcked && open) label += "（轮到你也点确认）";
+          return label;
+        }).join("、") + "</div>";
         if (acks.length) {
           html += "<div class='who-line'>已确认：" + acks.map(function (a) { return esc(short(a.sub)); }).join("、") + "</div>";
         }
-        if (iAmParty && !myAcked && !verified) {
+        if (p.status === "rejected" && p.reject_reason) {
+          html += "<div class='who-line'>异议（" + esc(short(p.rejected_by || "")) + "）：" + esc(p.reject_reason) + "</div>";
+        }
+        if (iAmParty && !myAcked && open) {
           html += "<button class='ok' data-ack='" + p.id + "'>我本人点确认</button>";
+          html += "<button class='ghost' data-reject-toggle='" + p.id + "'>有异议 · 阐述观点</button>";
+          html += "<div class='hidden' data-reject-box='" + p.id + "'>";
+          html += "<textarea data-reject-reason='" + p.id + "' placeholder='必填：你的不同观点'></textarea>";
+          html += "<button class='warn' data-reject='" + p.id + "'>提交异议</button>";
+          html += "</div>";
           html += "<div class='hint'>点下去表示：这是我本人同意的拍板，不是帮别人点。</div>";
+        }
+        if (p.created_by === me && open) {
+          html += "<button class='ghost' data-withdraw='" + p.id + "'>撤回本条</button>";
         }
         html += "</div>";
       });
@@ -478,6 +515,47 @@
           }).catch(function (e) { show($("seat-msg"), "err", "确认失败：" + e.message); });
       });
     });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-reject-toggle]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var box = document.querySelector("[data-reject-box='" + btn.getAttribute("data-reject-toggle") + "']");
+        if (box) box.classList.toggle("hidden");
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-reject]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var pid = btn.getAttribute("data-reject");
+        var ta = document.querySelector("[data-reject-reason='" + pid + "']");
+        var reason = ta ? ta.value.trim() : "";
+        if (!reason) { show($("seat-msg"), "err", "异议必须写理由"); return; }
+        api("/circle/api/reject", "POST", { circle_id: state.circleId, proposal_id: pid, reason: reason })
+          .then(function () {
+            show($("seat-msg"), "ok", "已提交异议，本条作废。提议人可改提新句。");
+            refresh();
+          }).catch(function (e) { show($("seat-msg"), "err", "异议失败：" + e.message); });
+      });
+    });
+    Array.prototype.forEach.call(document.querySelectorAll("[data-withdraw]"), function (btn) {
+      btn.addEventListener("click", function () {
+        if (!confirm("确定撤回本条？撤回后可改提新句。")) return;
+        var pid = btn.getAttribute("data-withdraw");
+        api("/circle/api/withdraw", "POST", { circle_id: state.circleId, proposal_id: pid })
+          .then(function () {
+            show($("seat-msg"), "ok", "已撤回，可改提新句。");
+            refresh();
+          }).catch(function (e) { show($("seat-msg"), "err", "撤回失败：" + e.message); });
+      });
+    });
+    var dissolveBtn = document.querySelector("[data-dissolve]");
+    if (dissolveBtn) {
+      dissolveBtn.addEventListener("click", function () {
+        if (!confirm("解散后历史保留、不能再入座，确定？")) return;
+        api("/circle/api/dissolve", "POST", { circle_id: state.circleId })
+          .then(function () {
+            show($("seat-msg"), "ok", "本场已解散。");
+            refresh();
+          }).catch(function (e) { show($("seat-msg"), "err", "解散失败：" + e.message); });
+      });
+    }
   }
 
   // ---------- 启动：已存令牌/圈号/深链则直入 ----------

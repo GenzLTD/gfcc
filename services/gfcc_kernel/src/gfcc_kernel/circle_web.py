@@ -36,6 +36,7 @@ from . import circle_flow as _flow_mod
 from . import invites as _invites
 from . import tokens as _tokens
 from .ports.circle import next_floor
+from .ports.consensus import TERMINAL
 
 logger = logging.getLogger("gfcc_kernel.circle_web")
 
@@ -59,6 +60,16 @@ def _circle(circle_id: str) -> Dict[str, Any]:
     if not res.ok:
         raise HTTPException(status_code=404, detail=res.error)
     return res.data["circle"]
+
+
+def _require_writable_circle(circle: Dict[str, Any]) -> None:
+    if circle.get("status") == "dissolved":
+        raise HTTPException(status_code=400, detail="circle dissolved")
+
+
+def _expire_stale(circle_id: str) -> None:
+    """惰性清僵尸 awaiting_ack。propose / status 双挂载。"""
+    _app._registry.get("consensus").expire_stale(circle_id)
 
 
 def _proposals_in(circle_id: str) -> List[Dict[str, Any]]:
@@ -229,6 +240,7 @@ async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
     """
     sub = _sub(request)
     circle = _circle(body.circle_id)
+    _require_writable_circle(circle)
     roles = {m["sub"]: m.get("role", "participant") for m in circle["members"]}
     if sub not in roles:
         raise HTTPException(status_code=403, detail="only seated members may propose")
@@ -237,7 +249,8 @@ async def api_propose(request: Request, body: ProposeBody) -> Dict[str, Any]:
     member_subs = list(roles)
     if len(member_subs) < 2:
         raise HTTPException(status_code=400, detail="need at least 2 seated members before proposing")
-    pending = [p for p in _proposals_in(body.circle_id) if p["status"] != "consensus_verified"]
+    _expire_stale(body.circle_id)
+    pending = [p for p in _proposals_in(body.circle_id) if p["status"] not in TERMINAL]
     if pending:
         raise HTTPException(status_code=400, detail="pending proposal exists")
 
@@ -272,6 +285,8 @@ class AckBody(BaseModel):
 async def api_ack(request: Request, body: AckBody) -> Dict[str, Any]:
     """本人点确认。只有 proposal 的 party 能 ack；AI/旁观者被端口拒绝。"""
     sub = _sub(request)
+    circle = _circle(body.circle_id)
+    _require_writable_circle(circle)
     consensus = _app._registry.get("consensus")
     st = consensus.get_status(body.proposal_id)
     if not st.ok:
@@ -314,6 +329,73 @@ async def api_ack(request: Request, body: AckBody) -> Dict[str, Any]:
     }
 
 
+class RejectBody(BaseModel):
+    circle_id: str
+    proposal_id: str
+    reason: str = ""
+
+
+@router.post("/api/reject")
+async def api_reject(request: Request, body: RejectBody) -> Dict[str, Any]:
+    """入座成员对未达成拍板句提交异议（必带理由）→ rejected，释放 pending。"""
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    _require_writable_circle(circle)
+    consensus = _app._registry.get("consensus")
+    st = consensus.get_status(body.proposal_id)
+    if not st.ok:
+        raise HTTPException(status_code=404, detail=st.error)
+    if st.data["proposal"]["circle_id"] != body.circle_id:
+        raise HTTPException(status_code=400, detail="proposal not in this circle")
+    reason = (body.reason or "").strip()
+    if not reason:
+        raise HTTPException(status_code=400, detail="reason is required")
+    res = consensus.reject(body.proposal_id, sub, reason)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": body.circle_id, "proposal_id": body.proposal_id, "proposal": res.data["proposal"]}
+
+
+class WithdrawBody(BaseModel):
+    circle_id: str
+    proposal_id: str
+
+
+@router.post("/api/withdraw")
+async def api_withdraw(request: Request, body: WithdrawBody) -> Dict[str, Any]:
+    """提议人撤回未达终态的本条 → withdrawn，释放 pending。"""
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    _require_writable_circle(circle)
+    consensus = _app._registry.get("consensus")
+    st = consensus.get_status(body.proposal_id)
+    if not st.ok:
+        raise HTTPException(status_code=404, detail=st.error)
+    if st.data["proposal"]["circle_id"] != body.circle_id:
+        raise HTTPException(status_code=400, detail="proposal not in this circle")
+    res = consensus.withdraw(body.proposal_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": body.circle_id, "proposal_id": body.proposal_id, "proposal": res.data["proposal"]}
+
+
+class DissolveBody(BaseModel):
+    circle_id: str
+
+
+@router.post("/api/dissolve")
+async def api_dissolve(request: Request, body: DissolveBody) -> Dict[str, Any]:
+    """建圈者解散本场。非 created_by → 403；未知圈 → 404。历史不删。"""
+    sub = _sub(request)
+    circle = _circle(body.circle_id)
+    if sub != circle.get("created_by"):
+        raise HTTPException(status_code=403, detail="only creator/organizer may dissolve")
+    res = _app._registry.get("circle").dissolve(body.circle_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": body.circle_id, "status": "dissolved"}
+
+
 @router.get("/api/status")
 async def api_status(request: Request, circle_id: str) -> Dict[str, Any]:
     """圈状态：成员 + 拍板句 + 确认进度 + 当前发言权（floor）。
@@ -323,6 +405,7 @@ async def api_status(request: Request, circle_id: str) -> Dict[str, Any]:
     """
     _sub(request)
     circle = _circle(circle_id)
+    _expire_stale(circle_id)
     proposals = _proposals_in(circle_id)
     floor_sub = circle.get("floor_sub")
     floor_next_sub = next_floor(circle.get("members", []), floor_sub) if floor_sub else None

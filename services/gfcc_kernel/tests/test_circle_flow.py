@@ -220,3 +220,124 @@ def test_leave_removes_member_and_floor_tx(client, store, flow_env) -> None:
     members = _rows(db, "SELECT sub FROM circle_members WHERE circle_id = ?", (cid,))
     assert [m["sub"] for m in members] == ["tester-b"]
     assert _rows(db, "SELECT floor_sub FROM circles WHERE id = ?", (cid,))[0]["floor_sub"] == "tester-b"
+
+
+def test_reject_persists(client, store, flow_env) -> None:
+    cid = _create_circle(client)
+    client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+    r = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": "可落库异议", "basis": "x"},
+        headers=_auth(TOKEN_A),
+    )
+    pid = r.json()["proposal_id"]
+    r = client.post(
+        "/circle/api/reject",
+        json={"circle_id": cid, "proposal_id": pid, "reason": "库里要留下理由"},
+        headers=_auth(TOKEN_B),
+    )
+    assert r.status_code == 200, r.text
+    db = flow_env._db_path()
+    row = _rows(
+        db,
+        "SELECT status, rejected_by, reject_reason, rejected_at FROM proposals WHERE id = ?",
+        (pid,),
+    )[0]
+    assert row["status"] == "rejected"
+    assert row["rejected_by"] == "tester-b"
+    assert row["reject_reason"] == "库里要留下理由"
+    assert row["rejected_at"]
+
+    k2 = ConsensusAdapter(threshold=85, flow=store)
+    st = k2.get_status(pid)
+    assert st.ok
+    assert st.data["proposal"]["status"] == "rejected"
+    assert st.data["proposal"]["reject_reason"] == "库里要留下理由"
+
+
+def test_withdraw_persists(client, store, flow_env) -> None:
+    cid = _create_circle(client)
+    client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+    r = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": "可落库撤回", "basis": "x"},
+        headers=_auth(TOKEN_A),
+    )
+    pid = r.json()["proposal_id"]
+    r = client.post(
+        "/circle/api/withdraw",
+        json={"circle_id": cid, "proposal_id": pid},
+        headers=_auth(TOKEN_A),
+    )
+    assert r.status_code == 200, r.text
+    db = flow_env._db_path()
+    row = _rows(
+        db,
+        "SELECT status, withdrawn_by, withdrawn_at FROM proposals WHERE id = ?",
+        (pid,),
+    )[0]
+    assert row["status"] == "withdrawn"
+    assert row["withdrawn_by"] == "tester-a"
+    assert row["withdrawn_at"]
+
+    k2 = ConsensusAdapter(threshold=85, flow=store)
+    st = k2.get_status(pid)
+    assert st.ok and st.data["proposal"]["status"] == "withdrawn"
+
+
+def test_stale_expiry_on_propose_path(client, store, flow_env) -> None:
+    """不先开 status，直接 propose 也要先清僵尸 awaiting_ack。"""
+    from gfcc_kernel.app import _registry
+
+    cid = _create_circle(client)
+    client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+    r = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": "隔夜僵尸", "basis": "x"},
+        headers=_auth(TOKEN_A),
+    )
+    assert r.status_code == 200, r.text
+    pid = r.json()["proposal_id"]
+    _registry.get("consensus")._proposals[pid]["created_at"] = "2000-01-01T00:00:00"
+    store.update_proposal(pid, created_at="2000-01-01T00:00:00")
+    r2 = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": "清完再提", "basis": "y"},
+        headers=_auth(TOKEN_A),
+    )
+    assert r2.status_code == 200, r2.text
+    assert r2.json()["proposal"]["status"] == "awaiting_ack"
+    db = flow_env._db_path()
+    assert _rows(db, "SELECT status FROM proposals WHERE id = ?", (pid,))[0]["status"] == "expired"
+
+
+def test_stale_expiry_on_status_path(client, store) -> None:
+    from gfcc_kernel.app import _registry
+
+    cid = _create_circle(client)
+    client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+    r = client.post(
+        "/circle/api/propose",
+        json={"circle_id": cid, "subject": "status 路径作废", "basis": "x"},
+        headers=_auth(TOKEN_A),
+    )
+    pid = r.json()["proposal_id"]
+    _registry.get("consensus")._proposals[pid]["created_at"] = "2000-01-01T00:00:00"
+    store.update_proposal(pid, created_at="2000-01-01T00:00:00")
+    r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_A))
+    assert r.status_code == 200, r.text
+    found = [p for p in r.json()["proposals"] if p["id"] == pid]
+    assert found and found[0]["status"] == "expired"
+
+
+def test_dissolve_persists(client, store, flow_env) -> None:
+    cid = _create_circle(client)
+    r = client.post("/circle/api/dissolve", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+    assert r.status_code == 200, r.text
+    db = flow_env._db_path()
+    row = _rows(db, "SELECT status, dissolved_at FROM circles WHERE id = ?", (cid,))[0]
+    assert row["status"] == "dissolved"
+    assert row["dissolved_at"]
+    c2 = CircleAdapter(flow=store)
+    g = c2.get(cid)
+    assert g.ok and g.data["circle"]["status"] == "dissolved"

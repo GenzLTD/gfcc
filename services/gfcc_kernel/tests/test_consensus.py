@@ -6,7 +6,7 @@
 
 import pytest
 
-from gfcc_kernel.ports.consensus import ConsensusAdapter
+from gfcc_kernel.ports.consensus import ConsensusAdapter, TERMINAL
 
 
 def _evidence(by="scorer-1"):
@@ -115,4 +115,67 @@ class TestExpire:
         adapter.acknowledge(proposal, "alice")
         adapter.acknowledge(proposal, "bob")
         r = adapter.expire(proposal)
+        assert not r.ok
+
+
+class TestReject:
+    def test_reject_requires_reason(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        r = adapter.reject(proposal, "bob", "")
+        assert not r.ok
+        assert "reason is required" in r.error
+
+    def test_reject_by_non_party_rejected(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        r = adapter.reject(proposal, "charlie", "旁观不能驳")
+        assert not r.ok
+
+    def test_reject_sets_status_and_releases_pending(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        r = adapter.reject(proposal, "bob", "不同意这个表述")
+        assert r.ok
+        assert r.data["proposal"]["status"] == "rejected"
+        pending = [p for p in adapter.list_all() if p["status"] not in TERMINAL]
+        assert pending == []
+        r2 = adapter.propose("circle-1", "改提一句", ["alice", "bob"], proposer_sub="alice")
+        assert r2.ok
+
+    def test_reject_terminal_state_rejected(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        adapter.acknowledge(proposal, "alice")
+        adapter.acknowledge(proposal, "bob")
+        r = adapter.reject(proposal, "alice", "太晚了")
+        assert not r.ok
+
+        p2 = adapter.propose("circle-1", "第二句", ["alice", "bob"], proposer_sub="alice").id
+        adapter.score(p2, 92.0, evidence=_evidence())
+        assert adapter.expire(p2).ok
+        assert not adapter.reject(p2, "alice", "已过期").ok
+
+        p3 = adapter.propose("circle-1", "第三句", ["alice", "bob"], proposer_sub="alice").id
+        adapter.score(p3, 92.0, evidence=_evidence())
+        assert adapter.withdraw(p3, "alice").ok
+        assert not adapter.reject(p3, "bob", "已撤回").ok
+
+
+class TestWithdraw:
+    def test_withdraw_only_proposer(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        r = adapter.withdraw(proposal, "bob")
+        assert not r.ok
+
+    def test_withdraw_sets_status_and_releases_pending(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        r = adapter.withdraw(proposal, "alice")
+        assert r.ok
+        assert r.data["proposal"]["status"] == "withdrawn"
+        pending = [p for p in adapter.list_all() if p["status"] not in TERMINAL]
+        assert pending == []
+        assert adapter.propose("circle-1", "改提一句", ["alice", "bob"], proposer_sub="alice").ok
+
+    def test_withdraw_terminal_state_rejected(self, adapter, proposal):
+        adapter.score(proposal, 92.0, evidence=_evidence())
+        adapter.acknowledge(proposal, "alice")
+        adapter.acknowledge(proposal, "bob")
+        r = adapter.withdraw(proposal, "alice")
         assert not r.ok

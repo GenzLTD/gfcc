@@ -1,15 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GFCC Consensus Port v1",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "port": "consensus",
-  "description": "Deliberation for 格契. Success is threshold AND bidirectional human acknowledge. Score without evidence is invalid. AI may contribute observation to score_evidence; parties who ack must be human. Having a scored result is not success.",
+  "description": "Deliberation for 格契. Success is threshold AND bidirectional human acknowledge. Score without evidence is invalid. AI may contribute observation to score_evidence; parties who ack must be human. Having a scored result is not success. rejected/withdrawn are additive statuses (2026-08-30 D-series): a party may void the current sentence with a reason, or the proposer may withdraw; neither steals the floor.",
   "not": [
     "job matching",
     "dating match",
     "single-click confirm after a scan",
     "unexplained scores",
-    "AI acknowledging as a party"
+    "AI acknowledging as a party",
+    "Loomio-style block that forces reconsideration"
   ],
   "threshold": {
     "name": "CONSENSUS_THRESHOLD",
@@ -27,7 +28,9 @@
     "awaiting_ack",
     "consensus_verified",
     "expired",
-    "failed"
+    "failed",
+    "rejected",
+    "withdrawn"
   ],
   "proposal": {
     "type": "object",
@@ -73,7 +76,9 @@
           "awaiting_ack",
           "consensus_verified",
           "expired",
-          "failed"
+          "failed",
+          "rejected",
+          "withdrawn"
         ]
       },
       "acks": {
@@ -86,7 +91,12 @@
             "at": { "type": "string", "format": "date-time" }
           }
         }
-      }
+      },
+      "rejected_by": { "type": ["string", "null"] },
+      "reject_reason": { "type": ["string", "null"] },
+      "rejected_at": { "type": ["string", "null"], "format": "date-time" },
+      "withdrawn_by": { "type": ["string", "null"] },
+      "withdrawn_at": { "type": ["string", "null"], "format": "date-time" }
     }
   },
   "operations": {
@@ -101,6 +111,21 @@
       "min_role": "participant",
       "notes": "Each human party must ack. AI cannot ack. Partial ack stays awaiting_ack."
     },
+    "reject": {
+      "scope": "consensus.reject",
+      "min_role": "participant",
+      "notes": "Party voids the current sentence with a required reason. Only awaiting_ack / consensus_passed. Does not steal the floor."
+    },
+    "withdraw": {
+      "scope": "consensus.withdraw",
+      "min_role": "participant",
+      "notes": "Only the proposer may withdraw. Only awaiting_ack / consensus_passed. Does not steal the floor."
+    },
+    "expire": {
+      "scope": "consensus.expire",
+      "min_role": "system",
+      "notes": "Timeout void. Verified proposals cannot be expired. Lazy trigger; not a standing timer."
+    },
     "get_status": { "scope": "consensus.read", "min_role": "observer" }
   },
   "invariants": [
@@ -109,6 +134,7 @@
     "score >= threshold → consensus_passed, then awaiting_ack; still can_complete = false",
     "all human parties acked → consensus_verified; only then can_complete = true",
     "expired or failed never promote to verified",
+    "rejected or withdrawn never promote to verified; floor stays with the proposer",
     "Ask result with matches/candidates must include consensus_status; UI must not treat list-as-success",
     "AI evidence is auxiliary; AI never replaces a party ack"
   ],

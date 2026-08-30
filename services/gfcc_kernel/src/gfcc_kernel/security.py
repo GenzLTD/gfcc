@@ -41,6 +41,9 @@ PORT_SCOPES = {
         "propose": "consensus.propose",
         "score": "consensus.score",
         "ack": "consensus.ack",
+        "reject": "consensus.reject",
+        "withdraw": "consensus.withdraw",
+        "expire": "consensus.expire",
     },
     "contribution": {
         "attest": "contribution.attest",

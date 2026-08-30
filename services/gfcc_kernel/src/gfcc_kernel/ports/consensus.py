@@ -1,33 +1,60 @@
 """consensus 端口 —— 共议 stub。
 
-对齐 contracts/consensus.v1.json：
-- 状态机：proposed → scored → below_threshold | consensus_passed → awaiting_ack → consensus_verified | expired | failed。
+对齐 contracts/consensus.v1.json 1.2.0：
+- 状态机：proposed → scored → below_threshold | consensus_passed → awaiting_ack
+  → consensus_verified | expired | failed | rejected | withdrawn。
 - 分数无证据无效（score_evidence 空则不能离开 proposed）。
 - score < threshold → below_threshold；score >= threshold → consensus_passed 然后 awaiting_ack。
 - 全部人类 party ack → consensus_verified，此时 can_complete 才为 true。
+- reject / withdraw 作废当前句，不抢地板；expired 惰性触发（隔夜僵尸场）。
 - AI 证据是辅助；AI 不能代替 party ack。
 """
 
 from __future__ import annotations
 
+import os
 import threading
 import time
-from typing import Any, Dict, List, Optional
-
 import uuid
+from typing import Any, Dict, List, Optional
 
 from ..envelope import PortOpResult
 
 DEFAULT_THRESHOLD = 85
+DEFAULT_PROPOSAL_TTL_SECONDS = 86400
 
 VALID_STATUSES = {
     "proposed", "scored", "below_threshold", "consensus_passed",
     "awaiting_ack", "consensus_verified", "expired", "failed",
+    "rejected", "withdrawn",
 }
+
+# 占不占 pending 位：全文唯一口径（circle_web / 前端同此集合）。
+TERMINAL = {"consensus_verified", "rejected", "withdrawn", "expired", "failed"}
+_REJECTABLE = {"awaiting_ack", "consensus_passed"}
 
 
 def _now() -> str:
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime())
+
+
+def _proposal_ttl_seconds() -> int:
+    raw = (os.getenv("CIRCLE_PROPOSAL_TTL_SECONDS") or str(DEFAULT_PROPOSAL_TTL_SECONDS)).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return DEFAULT_PROPOSAL_TTL_SECONDS
+
+
+def _created_epoch(ts: str) -> Optional[float]:
+    if not ts:
+        return None
+    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return time.mktime(time.strptime(ts, fmt))
+        except ValueError:
+            continue
+    return None
 
 
 class ConsensusAdapter:
@@ -161,6 +188,79 @@ class ConsensusAdapter:
         if self._flow is not None:
             self._flow.update_proposal(proposal_id, status=prop["status"])
         return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop)})
+
+    def reject(self, proposal_id: str, sub: str, reason: str) -> PortOpResult:
+        """入座 party 持异议：当前句作废，不抢地板。理由必填。"""
+        if not reason or not str(reason).strip():
+            return PortOpResult(ok=False, error="reason is required")
+        with self._lock:
+            prop = self._proposals.get(proposal_id)
+            if prop is None:
+                return PortOpResult(ok=False, error=f"proposal not found: {proposal_id}")
+            if prop["status"] not in _REJECTABLE:
+                return PortOpResult(ok=False, error=f"proposal not rejectable: {prop['status']}")
+            if sub not in prop["parties"]:
+                return PortOpResult(ok=False, error="rejector is not a party")
+            prop["status"] = "rejected"
+            prop["rejected_by"] = sub
+            prop["reject_reason"] = str(reason).strip()
+            prop["rejected_at"] = _now()
+        if self._flow is not None:
+            self._flow.update_proposal(
+                proposal_id,
+                status=prop["status"],
+                rejected_by=prop["rejected_by"],
+                reject_reason=prop["reject_reason"],
+                rejected_at=prop["rejected_at"],
+            )
+        return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop)})
+
+    def withdraw(self, proposal_id: str, sub: str) -> PortOpResult:
+        """提议人撤回未达终态的本句，不抢地板。"""
+        with self._lock:
+            prop = self._proposals.get(proposal_id)
+            if prop is None:
+                return PortOpResult(ok=False, error=f"proposal not found: {proposal_id}")
+            if prop.get("created_by") != sub:
+                return PortOpResult(ok=False, error="only proposer may withdraw")
+            if prop["status"] not in _REJECTABLE:
+                return PortOpResult(ok=False, error=f"proposal not withdrawable: {prop['status']}")
+            prop["status"] = "withdrawn"
+            prop["withdrawn_by"] = sub
+            prop["withdrawn_at"] = _now()
+        if self._flow is not None:
+            self._flow.update_proposal(
+                proposal_id,
+                status=prop["status"],
+                withdrawn_by=prop["withdrawn_by"],
+                withdrawn_at=prop["withdrawn_at"],
+            )
+        return PortOpResult(ok=True, id=proposal_id, data={"proposal": dict(prop)})
+
+    def expire_stale(self, circle_id: str, ttl_seconds: Optional[int] = None) -> List[str]:
+        """惰性作废：该圈 awaiting_ack 且 created_at 超 TTL 的提案 → expire()。
+
+        ttl_seconds=None 读 CIRCLE_PROPOSAL_TTL_SECONDS（默认 86400）；0 禁用。
+        先收集 id 再调 expire()，避免与 expire 抢同一把锁。
+        """
+        ttl = _proposal_ttl_seconds() if ttl_seconds is None else ttl_seconds
+        if ttl <= 0:
+            return []
+        cutoff = time.time() - ttl
+        with self._lock:
+            stale = [
+                p["id"]
+                for p in self._proposals.values()
+                if p.get("circle_id") == circle_id
+                and p["status"] == "awaiting_ack"
+                and (_created_epoch(p.get("created_at") or "") or 0) < cutoff
+            ]
+        expired: List[str] = []
+        for pid in stale:
+            res = self.expire(pid)
+            if res.ok:
+                expired.append(pid)
+        return expired
 
     # ------------------------------------------------------------------ #
     # 信号摄入（Step3 W3）：consensus_match → 共议证据

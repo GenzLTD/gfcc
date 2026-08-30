@@ -56,7 +56,12 @@ CREATE TABLE IF NOT EXISTS proposals (
     score_evidence TEXT NOT NULL DEFAULT '[]',
     parties        TEXT NOT NULL DEFAULT '[]',
     created_at     TEXT NOT NULL,
-    verified_at    TEXT
+    verified_at    TEXT,
+    rejected_by    TEXT,
+    reject_reason  TEXT,
+    rejected_at    TEXT,
+    withdrawn_by   TEXT,
+    withdrawn_at   TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_proposals_circle ON proposals (circle_id);
 CREATE TABLE IF NOT EXISTS proposal_acks (
@@ -101,6 +106,21 @@ class CircleFlowStore:
         self._db.parent.mkdir(parents=True, exist_ok=True)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            self._migrate_proposal_columns(conn)
+
+    @staticmethod
+    def _migrate_proposal_columns(conn: sqlite3.Connection) -> None:
+        """存量库补列：SQLite 无 ADD COLUMN IF NOT EXISTS，用 PRAGMA 判缺。"""
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(proposals)")}
+        for name, coltype in (
+            ("rejected_by", "TEXT"),
+            ("reject_reason", "TEXT"),
+            ("rejected_at", "TEXT"),
+            ("withdrawn_by", "TEXT"),
+            ("withdrawn_at", "TEXT"),
+        ):
+            if name not in existing:
+                conn.execute(f"ALTER TABLE proposals ADD COLUMN {name} {coltype}")
 
     def _connect(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self._db))

@@ -2,7 +2,7 @@
 """校验 contracts/：可解析、同家族 version 一致、所有 $ref 可解析。
 
 两族互不影响：
-  l0     — contracts/*.json 除 signal.* 外，当前线 1.1.0
+  l0     — contracts/*.json 除 signal.* 外，当前线 1.2.0
   signal — signal.envelope.v1.json + contracts/signals/*.json，当前线 1.0.0
 
 G1 冻结闸门。只认同仓内文件引用（如 roles.v1.json#/role_enum、
