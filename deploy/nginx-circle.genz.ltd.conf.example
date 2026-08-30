@@ -1,0 +1,56 @@
+# 拷到天翼：/etc/nginx/sites-available/circle-genz
+# 启用：ln -s .../circle-genz /etc/nginx/sites-enabled/ && nginx -t && systemctl reload nginx
+#
+# 不要改 looma 的 default_server（PlanetX / /ppi / /circle 的 IP 入口仍走那一份）。
+# 本 vhost 只认 Host=circle.genz.ltd。证书路径在 certbot 签发后按 live 目录改。
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name circle.genz.ltd;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name circle.genz.ltd;
+
+    ssl_certificate     /etc/letsencrypt/live/circle.genz.ltd/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/circle.genz.ltd/privkey.pem;
+
+    # R1：access_log 不要把 ?i= 兑换码打进磁盘。在 http{} 定义 map + log_format 后在此引用。
+    # map $request_uri $circle_uri_redacted { ~^(.*[?&]i=)[^&]*(.*)$ $1REDACTED$2; default $request_uri; }
+    # log_format circle_redact '... "$circle_uri_redacted" ...';
+    # access_log /var/log/nginx/circle-genz.access.log circle_redact;
+
+    # 页与 API 都挂在 /circle/（circle.html 写死了绝对路径 /circle/api/…）
+    location = /circle {
+        return 301 /circle/;
+    }
+
+    location /circle/ {
+        proxy_pass http://127.0.0.1:5211;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+    }
+
+    location / {
+        return 302 /circle/;
+    }
+
+    # 元服务业务域名校验文件（启用薄壳时取消注释，文件放 /var/www/circle-genz-wellknown/）
+    # location ~ ^/[A-Za-z0-9]+\.txt$ {
+    #     root /var/www/circle-genz-wellknown;
+    # }
+}

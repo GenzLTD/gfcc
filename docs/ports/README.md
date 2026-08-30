@@ -1,6 +1,6 @@
 # 格契端口真源提纲
 
-> **价值层（先读）**：[docs/vision.md](../vision.md) —— 为谁而生、成什么算成。本页是机器可执行的契约层。  
+> **价值层（先读）**：[docs/vision.md](../vision.md) —— 为谁而生、成什么算成。迷茫时：[围坐初心](../reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md)。本页是机器可执行的契约层。  
 > **地位**：本页 + `contracts/*.v1.json` 是 GFCC / 格契对外能力的**契约真源**。实现向它适配；改能力先过价值层，再改契约，再改代码。  
 > **方法**（学自四份，不抄产品字段）：Steedar CONTRACT（契约权威、先改真源）；ethos 网关协议（定义方 vs 复刻方、`sub` 为 uid、deny-by-default）；Tatha 单入口（一个 Ask 信封、内部可换）；Agent Runtime 槽位（`llm/tools/session/policy/store`，模式 = 插件清单）。共识课：阈值 + **双向确认**，「有结果」不是成功。  
 > **产品轴**：Genesis · Fellowship · Consensus · Circle。交付**体系与能力**；数据是使用方的，首次为空。

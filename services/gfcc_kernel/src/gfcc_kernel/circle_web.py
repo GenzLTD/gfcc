@@ -171,12 +171,41 @@ async def api_leave(request: Request, body: LeaveBody) -> Dict[str, Any]:
     退出只是本地清 token 的话后端席位还在，重新入座会撞
     "already a member"；因此前端「退出」按钮必须先调这里。
     退场后同一令牌可随时重新入座（join 幂等）。
+    只摘自己的席位；不清别人的旁观（决策⑫，旁观 C 由 unobserve 自理）。
     """
     sub = _sub(request)
     res = _app._registry.get("circle").leave(body.circle_id, sub)
     if not res.ok:
         raise HTTPException(status_code=400, detail=res.error)
     return {"circle_id": res.id, "members": res.data["members"]}
+
+
+class ObserveBody(BaseModel):
+    circle_id: str
+
+
+@router.post("/api/observe")
+async def api_observe(request: Request, body: ObserveBody) -> Dict[str, Any]:
+    """C 登记旁观（施工单「旁观在场可见」§0–§9）。
+
+    只登记「在听」，不入座、不进 parties、不能提议/确认；A/B 的 status
+    会带旁观名单。重复旁观幂等 200；已入座再旁观 → 400（决策④）。
+    """
+    sub = _sub(request)
+    res = _app._registry.get("circle").observe(body.circle_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": res.id, "watchers": res.data["watchers"]}
+
+
+@router.post("/api/unobserve")
+async def api_unobserve(request: Request, body: ObserveBody) -> Dict[str, Any]:
+    """离开旁观（决策⑥）：从在册名单移除，A/B 刷新后不再看到该旁观。"""
+    sub = _sub(request)
+    res = _app._registry.get("circle").unobserve(body.circle_id, sub)
+    if not res.ok:
+        raise HTTPException(status_code=400, detail=res.error)
+    return {"circle_id": res.id, "watchers": res.data["watchers"]}
 
 
 class ProposeBody(BaseModel):
@@ -299,6 +328,7 @@ async def api_status(request: Request, circle_id: str) -> Dict[str, Any]:
     floor_next_sub = next_floor(circle.get("members", []), floor_sub) if floor_sub else None
     return {
         "circle": circle,
+        "watchers": _app._registry.get("circle").list_watchers(circle_id),
         "proposals": proposals,
         "floor_sub": floor_sub,
         "floor_next_sub": floor_next_sub,

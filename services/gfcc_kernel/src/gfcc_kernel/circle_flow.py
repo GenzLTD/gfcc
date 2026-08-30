@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import os
 import sqlite3
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -65,6 +66,14 @@ CREATE TABLE IF NOT EXISTS proposal_acks (
     PRIMARY KEY (proposal_id, sub)
 );
 CREATE INDEX IF NOT EXISTS idx_proposal_acks_proposal ON proposal_acks (proposal_id);
+CREATE TABLE IF NOT EXISTS circle_watchers (
+    circle_id   TEXT NOT NULL,
+    sub         TEXT NOT NULL,
+    observed_at TEXT NOT NULL,
+    left_at     TEXT,
+    PRIMARY KEY (circle_id, sub)
+);
+CREATE INDEX IF NOT EXISTS idx_circle_watchers_circle ON circle_watchers (circle_id);
 """
 
 # update_proposal 的 JSON 列（读取时 _jloads 对称还原）
@@ -285,6 +294,54 @@ class CircleFlowStore:
                 (proposal_id,),
             ).fetchall()
             return [dict(r) for r in rows]
+
+    # ------------------------------------------------------------------ #
+    # 旁观（施工单「围坐会场_旁观在场可见实施.md」§0–§9）
+    # ------------------------------------------------------------------ #
+
+    def upsert_watcher(self, circle_id: str, sub: str, observed_at: str) -> None:
+        """登记/刷新旁观（决策②⑧）：重复 observe 幂等，刷新时间并清 left_at。"""
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT INTO circle_watchers (circle_id, sub, observed_at, left_at) "
+                "VALUES (?, ?, ?, NULL) "
+                "ON CONFLICT(circle_id, sub) DO UPDATE SET "
+                "observed_at = excluded.observed_at, left_at = NULL",
+                (circle_id, sub, observed_at),
+            )
+
+    def leave_watcher(self, circle_id: str, sub: str) -> None:
+        """离开旁观 / join 摘 watcher（决策⑤⑥）：写 left_at，历史旁观行保留。"""
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE circle_watchers SET left_at = ? "
+                "WHERE circle_id = ? AND sub = ? AND left_at IS NULL",
+                (time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime()), circle_id, sub),
+            )
+
+    def list_watchers(self, circle_id: str) -> List[Dict[str, Any]]:
+        """当前在册旁观（left_at IS NULL），按登记顺序。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT sub, observed_at FROM circle_watchers "
+                "WHERE circle_id = ? AND left_at IS NULL ORDER BY rowid",
+                (circle_id,),
+            ).fetchall()
+            return [dict(r) for r in rows]
+
+    def list_all_watchers(self) -> Dict[str, List[Dict[str, Any]]]:
+        """hydrate 用：一次取全部在册旁观，按圈分组（决策③：重启仍可见谁在听）。"""
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT circle_id, sub, observed_at FROM circle_watchers "
+                "WHERE left_at IS NULL ORDER BY rowid"
+            ).fetchall()
+            out: Dict[str, List[Dict[str, Any]]] = {}
+            for r in rows:
+                out.setdefault(r["circle_id"], []).append(
+                    {"sub": r["sub"], "observed_at": r["observed_at"]}
+                )
+            return out
 
 
 _store: Optional[CircleFlowStore] = None

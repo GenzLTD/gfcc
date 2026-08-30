@@ -430,6 +430,147 @@ def test_proposer_leave_no_double_advance() -> None:
         assert r.json()["floor_sub"] == "tester-b"
 
 
+# ---------- 旁观在场可见（施工单「旁观在场可见实施」§0–§9） ----------
+
+
+def test_observe_registers_and_visible_to_all() -> None:
+    """决策⑩：C observe 后，A 与 B 的 status 都含 C；C 不进 members/parties。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+
+        r = client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        assert r.status_code == 200, r.text
+        assert [w["sub"] for w in r.json()["watchers"]] == ["tester-c"]
+
+        # A 与 B 看到同一份旁观名单（验收硬点：不能只验 jason）
+        for tok in (TOKEN_A, TOKEN_B):
+            r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(tok))
+            assert r.status_code == 200
+            body = r.json()
+            assert [w["sub"] for w in body["watchers"]] == ["tester-c"]
+            assert all(m["sub"] != "tester-c" for m in body["circle"]["members"])
+
+
+def test_observe_repeat_idempotent() -> None:
+    """决策⑧：重复 observe 幂等 200，名单不重复。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        r1 = client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r2 = client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        assert r1.status_code == 200
+        assert r2.status_code == 200
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_A))
+        assert [w["sub"] for w in r.json()["watchers"]] == ["tester-c"]
+
+
+def test_observe_seated_member_rejected() -> None:
+    """决策④：已入座再旁观 → 400（避免一人同时在两套名单）。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        r = client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        assert r.status_code == 400
+        assert "already seated" in r.json()["detail"]
+
+
+def test_observe_unknown_circle_rejected() -> None:
+    """未知圈 observe → 400（对齐 join）。"""
+    with TestClient(kernel_app) as client:
+        r = client.post("/circle/api/observe", json={"circle_id": "no-such-circle"}, headers=_auth(TOKEN_C))
+        assert r.status_code == 400
+        assert "not found" in r.json()["detail"]
+
+
+def test_observer_cannot_ack_or_propose() -> None:
+    """§0 一句话：旁观可看 status，但不能 ack（not a party）、不能 propose（403）。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "C 乱写"},
+            headers=_auth(TOKEN_C),
+        )
+        assert r.status_code == 403
+        assert "seated members" in r.json()["detail"]
+        # 拍板句 parties 仍是入座成员，C 不在其中
+        r = client.post(
+            "/circle/api/propose",
+            json={"circle_id": cid, "subject": "AB 拍板"},
+            headers=_auth(TOKEN_A),
+        )
+        pid = r.json()["proposal_id"]
+        assert set(r.json()["proposal"]["parties"]) == {"tester-a", "tester-b"}
+        r = client.post("/circle/api/ack", json={"circle_id": cid, "proposal_id": pid}, headers=_auth(TOKEN_C))
+        assert r.status_code == 400
+        assert "not a party" in r.json()["detail"]
+
+
+def test_join_drops_watcher() -> None:
+    """决策⑤：旁观后再入座 → watchers 消失、进入 members。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_A))
+        assert [w["sub"] for w in r.json()["watchers"]] == ["tester-c"]
+
+        r = client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        assert r.status_code == 200
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_A))
+        body = r.json()
+        assert body["watchers"] == []
+        assert [m["sub"] for m in body["circle"]["members"]] == ["tester-a", "tester-c"]
+
+
+def test_unobserve_removes_from_all() -> None:
+    """决策⑥：unobserve 后 A/B 的 status 都看不到 C。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r = client.post("/circle/api/unobserve", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        assert r.status_code == 200
+        assert r.json()["watchers"] == []
+        for tok in (TOKEN_A, TOKEN_B):
+            r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(tok))
+            assert r.json()["watchers"] == []
+
+
+def test_unobserve_not_observer_rejected() -> None:
+    """未旁观就 unobserve → 400。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        r = client.post("/circle/api/unobserve", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        assert r.status_code == 400
+        assert "not an observer" in r.json()["detail"]
+
+
+def test_leave_does_not_clear_others_watcher() -> None:
+    """决策⑫：A leave 只摘自己的席位，不清 C 的旁观。"""
+    with TestClient(kernel_app) as client:
+        cid = _create_circle(client)
+        client.post("/circle/api/join", json={"circle_id": cid}, headers=_auth(TOKEN_B))
+        client.post("/circle/api/observe", json={"circle_id": cid}, headers=_auth(TOKEN_C))
+        r = client.post("/circle/api/leave", json={"circle_id": cid}, headers=_auth(TOKEN_A))
+        assert r.status_code == 200
+        r = client.get(f"/circle/api/status?circle_id={cid}", headers=_auth(TOKEN_B))
+        body = r.json()
+        assert [m["sub"] for m in body["circle"]["members"]] == ["tester-b"]
+        assert [w["sub"] for w in body["watchers"]] == ["tester-c"]
+
+
+def test_page_contains_observe_copy() -> None:
+    """页面静态文案：有旁观语义、无含混的「全员」确认句。"""
+    with TestClient(kernel_app) as client:
+        r = client.get("/circle/")
+        assert r.status_code == 200
+        assert "旁观" in r.text
+        assert "/circle/api/observe" in r.text
+        assert "入座成员" in r.text
+        assert "全员" not in r.text
+
+
 def test_redeem_invite_flow(tmp_path, monkeypatch) -> None:
     """§8 回归：邀请深链兑换 → 入场（邀请链/本人 ack 不改）。"""
     import time

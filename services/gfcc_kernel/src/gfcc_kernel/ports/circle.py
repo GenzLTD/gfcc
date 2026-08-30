@@ -45,15 +45,24 @@ class CircleAdapter:
     def __init__(self, flow: Optional[CircleFlowStore] = None) -> None:
         self._lock = threading.Lock()
         self._circles: Dict[str, Dict[str, Any]] = {}
+        # 旁观在册（left_at IS NULL）：{circle_id: [{"sub","observed_at"}]}
+        self._watchers: Dict[str, List[Dict[str, Any]]] = {}
         self._flow = flow
         if flow is not None:
             self._hydrate()
 
     def _hydrate(self) -> None:
-        """启动恢复：从库读回圈与成员（含 dissolved 历史，dissolve 不删行）。"""
+        """启动恢复：从库读回圈与成员（含 dissolved 历史，dissolve 不删行）与旁观。"""
         for c in self._flow.list_circles():
             c["members"] = self._flow.list_members(c["id"])
             self._circles[c["id"]] = c
+        self._watchers = self._flow.list_all_watchers()
+
+    def _drop_watcher_locked(self, circle_id: str, sub: str) -> None:
+        """内存侧摘掉某 sub 的旁观标记（join/决策⑤ 与 leave 幂等兜底）。"""
+        lst = self._watchers.get(circle_id)
+        if lst:
+            self._watchers[circle_id] = [w for w in lst if w["sub"] != sub]
 
     # ------------------------------------------------------------------ #
     # operations
@@ -96,6 +105,7 @@ class CircleAdapter:
             if any(m["sub"] == participant_sub for m in circle["members"]):
                 # 幂等：已入座则视为重新入座成功（配合 leave 释放席位后重进，
                 # 也避免「退出未清后端」导致永远进不去）
+                self._drop_watcher_locked(circle_id, participant_sub)  # 防御：不应同时存在
                 return PortOpResult(
                     ok=True,
                     id=circle_id,
@@ -108,8 +118,11 @@ class CircleAdapter:
                 "joined_at": _now(),
             }
             circle["members"].append(member)
+            # 决策⑤：旁观后再入座 → 从旁观名单摘掉（不留幽灵旁观）
+            self._drop_watcher_locked(circle_id, participant_sub)
         if self._flow is not None:
             self._flow.upsert_member(circle_id, member)
+            self._flow.leave_watcher(circle_id, participant_sub)
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "members": circle["members"]})
 
     def leave(self, circle_id: str, participant_sub: str) -> PortOpResult:
@@ -171,6 +184,56 @@ class CircleAdapter:
         if self._flow is not None:
             self._flow.update_circle_status(circle_id, "paused")
         return PortOpResult(ok=True, id=circle_id, data={"circle_id": circle_id, "status": "paused"})
+
+    def observe(self, circle_id: str, observer_sub: str) -> PortOpResult:
+        """登记旁观（决策②⑧）：不入座、不进 parties；重复旁观幂等刷新时间。
+
+        已入座再旁观 → 400（决策④：避免一人同时在两套名单）。
+        """
+        now = _now()
+        with self._lock:
+            circle = self._circles.get(circle_id)
+            if circle is None:
+                return PortOpResult(ok=False, error=f"circle not found: {circle_id}")
+            if circle["status"] != "active":
+                return PortOpResult(ok=False, error=f"circle not observable: status={circle['status']}")
+            if any(m["sub"] == observer_sub for m in circle["members"]):
+                return PortOpResult(ok=False, error="already seated; leave first then observe")
+            lst = self._watchers.setdefault(circle_id, [])
+            existed = False
+            for w in lst:
+                if w["sub"] == observer_sub:
+                    w["observed_at"] = now  # 幂等：刷新登记时间
+                    existed = True
+                    break
+            if not existed:
+                lst.append({"sub": observer_sub, "observed_at": now})
+        if self._flow is not None:
+            self._flow.upsert_watcher(circle_id, observer_sub, now)
+        return PortOpResult(
+            ok=True,
+            id=circle_id,
+            data={"circle_id": circle_id, "watchers": list(self._watchers.get(circle_id, []))},
+        )
+
+    def unobserve(self, circle_id: str, observer_sub: str) -> PortOpResult:
+        """离开旁观（决策⑥）：v1 保留历史（库写 left_at），当前在册名单移除。"""
+        with self._lock:
+            lst = self._watchers.get(circle_id)
+            if not lst or not any(w["sub"] == observer_sub for w in lst):
+                return PortOpResult(ok=False, error="not an observer")
+            self._watchers[circle_id] = [w for w in lst if w["sub"] != observer_sub]
+        if self._flow is not None:
+            self._flow.leave_watcher(circle_id, observer_sub)
+        return PortOpResult(
+            ok=True,
+            id=circle_id,
+            data={"circle_id": circle_id, "watchers": list(self._watchers.get(circle_id, []))},
+        )
+
+    def list_watchers(self, circle_id: str) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [dict(w) for w in self._watchers.get(circle_id, [])]
 
     def dissolve(self, circle_id: str, organizer_sub: str) -> PortOpResult:
         """解散：状态置 dissolved；历史（Dual 记录）不删。"""

@@ -74,6 +74,7 @@
   .pill.me { background: var(--brand-soft); color: var(--brand); }
   .pill.org { background: var(--warn-soft); color: var(--warn); }
   .pill.floor { background: #fff7e6; color: #b45309; border: 1px dashed #d97706; }
+  .pill.watch { background: #f0f4ff; color: #6b7fae; border: 1px dashed #b9c8ea; }
   .banner {
     border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-top: 10px; display: none;
   }
@@ -130,7 +131,7 @@
   <!-- 2 席位 -->
   <section class="card hidden" id="card-seat">
     <h2><span class="step">2</span>席位</h2>
-    <div class="desc">组织者 A：建圈并分享链接。大家按入座顺序轮流提交拍板句：只有当前「发言权」持有者能写，全员各自确认后交给下一位。旁观 C：先只看，不入座。</div>
+    <div class="desc">组织者 A：建圈并分享链接。大家按入座顺序轮流提交拍板句：只有当前「发言权」持有者能写，入座成员各自确认后交给下一位。旁观 C：先只看，不入座。</div>
     <div class="row">
       <div>
         <div class="desc">我是组织者 A：写一个真议题名建圈，把链接发给大家。</div>
@@ -158,7 +159,7 @@
   <!-- 3 拍板句（发言权持有者可见） -->
   <section class="card hidden" id="card-propose">
     <h2><span class="step">3</span>拍板句 <span class="status-tag done" id="propose-role">发言权</span></h2>
-    <div class="desc">按入座顺序轮流：只有当前「发言权」持有者能写这一句拍板话。全员各自确认后，发言权交给下一位，继续下一条。</div>
+    <div class="desc">按入座顺序轮流：只有当前「发言权」持有者能写这一句拍板话。入座成员各自确认后，发言权交给下一位，继续下一条。</div>
     <label for="subject">拍板句</label>
     <textarea id="subject" placeholder="写一个真议题，而不是测试句（例：本周按 W4 节奏推进，周五前完成验收）"></textarea>
     <label for="basis">依据（一句话，可选）</label>
@@ -278,20 +279,37 @@
   }
 
   // ---------- 退出 ----------
-  // 先调 /api/leave 释放后端席位，再清本地缓存并刷新；
-  // 否则后端成员还在，重新入座会撞 "already a member"。
+  // 按席位分支（施工单「旁观在场可见」§4）：已入座 → leave；仅旁观 → unobserve；
+  // 两边都没有 → 只清本地。先拉一次 status 判自己的席位，再清本地缓存并刷新。
   $("btn-leave").addEventListener("click", function () {
     var cid = state.circleId || $("circle-id").value.trim();
-    var done = function () {
-      sessionStorage.removeItem("gfcc_circle_token");
-      sessionStorage.removeItem("gfcc_circle_id");
-      sessionStorage.removeItem("gfcc_circle_sub");
-      location.reload();
+    var done = function (msg) {
+      show($("seat-msg"), "ok", msg || "已离场。可随时凭令牌重新入场。");
+      setTimeout(function () {
+        sessionStorage.removeItem("gfcc_circle_token");
+        sessionStorage.removeItem("gfcc_circle_id");
+        sessionStorage.removeItem("gfcc_circle_sub");
+        location.reload();
+      }, 600);
     };
     if (!cid) { done(); return; }
-    api("/circle/api/leave", "POST", { circle_id: cid })
-      .then(function () { show($("seat-msg"), "ok", "已退场，席位已释放，可随时凭令牌重新入座。"); setTimeout(done, 600); })
-      .catch(function () { done(); });
+    api("/circle/api/status?circle_id=" + encodeURIComponent(cid)).then(function (j) {
+      var inMembers = (j.circle.members || []).some(function (m) { return m.sub === state.sub; });
+      var inWatchers = (j.watchers || []).some(function (w) { return w.sub === state.sub; });
+      var call;
+      if (inMembers) {
+        call = api("/circle/api/leave", "POST", { circle_id: cid }).then(function () {
+          return "已退场，席位已释放，可随时凭令牌重新入座。";
+        });
+      } else if (inWatchers) {
+        call = api("/circle/api/unobserve", "POST", { circle_id: cid }).then(function () {
+          return "已离开旁观，入座成员将不再看到你在听。";
+        });
+      } else {
+        call = Promise.resolve("后端本就没有你的席位，已清本地缓存。");
+      }
+      call.then(done).catch(function () { done(); });
+    }).catch(function () { done(); });
   });
 
   // ---------- 建圈 ----------
@@ -305,7 +323,7 @@
       $("my-circle-link").textContent = link;
       $("my-circle-cid").textContent = j.circle_id;
       showEl($("my-circle"));
-      show($("seat-msg"), "ok", "建圈成功。把上面的链接发到群里。");
+      show($("seat-msg"), "ok", "建圈成功。把上面的链接发到群里；旁观会出现在状态卡，不参与确认。");
       enterCircle(j.circle_id);
     }).catch(function (e) { show($("seat-msg"), "err", "建圈失败：" + e.message); });
   });
@@ -323,13 +341,18 @@
   });
 
   // ---------- 只旁观（C，不入座） ----------
+  // 先 POST /observe 服务端登记在场，成功再轮询；失败出 banner（§4 锚点）。
   $("btn-observe").addEventListener("click", function () {
     var cid = $("circle-id").value.trim();
     if (!cid) { show($("seat-msg"), "err", "请先填写圈号（或打开 A 发的链接）"); return; }
     state.circleId = cid;
     sessionStorage.setItem("gfcc_circle_id", cid);
-    show($("seat-msg"), "ok", "已旁观（未入座）。你只能看，不能确认。");
-    enterCircle(cid);
+    api("/circle/api/observe", "POST", { circle_id: cid }).then(function () {
+      show($("seat-msg"), "ok", "已旁观（未入座）。你只能看，不能确认；入座成员会在状态卡看到你在听。");
+      enterCircle(cid);
+    }).catch(function (e) {
+      show($("seat-msg"), "err", "旁观登记失败：" + e.message + "（已入座请先点退出，再旁观）");
+    });
   });
 
   // ---------- 进入圈子 ----------
@@ -348,8 +371,8 @@
     api("/circle/api/propose", "POST", {
       circle_id: state.circleId, subject: subject, basis: $("basis").value.trim(),
     }).then(function () {
-      show($("propose-msg"), "ok", "拍板句已提交，等待全员本人点确认");
-      show($("seat-msg"), "ok", "拍板句已提交，卡片已收起：全员确认达成后，发言权自动交给下一位。");
+      show($("propose-msg"), "ok", "拍板句已提交，等待入座成员本人点确认（旁观不点头）");
+      show($("seat-msg"), "ok", "拍板句已提交，卡片已收起：入座成员确认达成后，发言权自动交给下一位。");
       refresh();
     }).catch(function (e) { show($("propose-msg"), "err", "提交失败：" + e.message); });
   });
@@ -367,6 +390,7 @@
   function render(j) {
     var circle = j.circle, proposals = j.proposals || [];
     var members = circle.members || [];
+    var watchers = j.watchers || [];
     var me = state.sub;
     var myRole = null;
     members.forEach(function (m) { if (m.sub === me) myRole = m.role; });
@@ -392,17 +416,26 @@
       html += "<div class='desc' style='margin-top:6px;'>圈号（B/C 手动粘贴用）：</div>";
       html += "<div class='big-cid'>" + esc(state.circleId) + "</div>";
       if (pendingCount > 0) {
-        html += "<div class='banner note' style='display:block;'>还有 " + pendingCount + " 条拍板句在等待确认：全员确认完（状态变「已达成」），才能提交下一条。一次只推进一条共识。</div>";
+        html += "<div class='banner note' style='display:block;'>还有 " + pendingCount + " 条拍板句在等待确认：入座成员确认完（状态变「已达成」），才能提交下一条。一次只推进一条共识。</div>";
       } else if (isSeated && !isFloor) {
         html += "<div class='banner note' style='display:block;'>当前发言权在 " + esc(short(floorSub || "—")) + " 手上。轮到 TA 写拍板句；本条达成后发言权交给 " + esc(short(floorNext || "—")) + "。</div>";
       }
     }
-    html += "<div style='font-size:13px;color:var(--muted);margin-bottom:8px;'>议题 <b style='color:var(--ink)'>" + esc(circle.name) + "</b> · 已入座 " + members.length + " 人 · " + esc(circle.status) + " · 当前发言权 " + esc(short(floorSub || "—")) + (me === floorSub ? "（轮到你写拍板句）" : "") + "</div>";
+    html += "<div style='font-size:13px;color:var(--muted);margin-bottom:8px;'>议题 <b style='color:var(--ink)'>" + esc(circle.name) + "</b> · 已入座 " + members.length + " 人 · 旁观 " + watchers.length + " 人 · " + esc(circle.status) + " · 当前发言权 " + esc(short(floorSub || "—")) + (me === floorSub ? "（轮到你写拍板句）" : "") + "</div>";
     html += "<div style='margin-bottom:4px;'>成员：</div>";
     members.forEach(function (m) {
       var cls = "pill" + (m.sub === me ? " me" : "") + (m.role === "organizer" ? " org" : "") + (m.sub === floorSub ? " floor" : "");
       html += "<span class='" + cls + "'>" + esc(short(m.sub)) + (m.role === "organizer" ? " · A" : "") + (m.sub === floorSub ? " · 地板" : "") + "</span>";
     });
+    html += "<div style='margin-bottom:4px;'>旁观：</div>";
+    if (!watchers.length) {
+      html += "<span style='font-size:12px;color:var(--muted);'>暂无</span>";
+    } else {
+      watchers.forEach(function (w) {
+        var cls = "pill watch" + (w.sub === me ? " me" : "");
+        html += "<span class='" + cls + "'>" + esc(short(w.sub)) + (w.sub === me ? "（你）" : "") + "</span>";
+      });
+    }
 
     if (!proposals.length) {
       html += "<div class='banner warn' style='display:block;'>还没有拍板句，等成员提交。</div>";
