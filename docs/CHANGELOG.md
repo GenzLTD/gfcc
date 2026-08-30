@@ -3,7 +3,7 @@
 ## Unreleased（实现层 / 工程基建）
 
 - `feat(consensus)` 契约 **1.2.0**（2026-08-30）：L0 家族锁步升次版本（`validate_contracts` 要求同族同号）。`consensus.v1.json` 加 `rejected`/`withdrawn` 状态、`reject`/`withdraw`/`expire` operations、异议/撤回字段；`roles.v1.json` participant 补 `consensus.reject`/`withdraw`。不改全员 ack、不升主版本。见 [`围坐会场_D1-D5缺陷修复施工单.md`](围坐会场_D1-D5缺陷修复施工单.md) §0.3。
-- `fix(circle)` D1–D5 缺陷修复（2026-08-30）：D4 入场剥空白 + 401 文案；D1 proposer 确认提示（不自动 ack）；D2 `POST /circle/api/reject`；D3 withdraw + 惰性 TTL（propose/status 双挂载）；D5 `POST /circle/api/dissolve`（非建圈者 403）；pending 闸改 `TERMINAL`。本机 pytest **201 passed**（新增 29）。**待天翼场次间上云**。施工单 [`围坐会场_D1-D5缺陷修复施工单.md`](围坐会场_D1-D5缺陷修复施工单.md)。
+- `fix(circle)` D1–D5 缺陷修复（2026-08-30 本机 / **2026-08-31 天翼冒烟 16/16**）：D4 入场剥空白 + 401 文案；D1 proposer 确认提示（不自动 ack）；D2 `POST /circle/api/reject`；D3 withdraw + 惰性 TTL；D5 `POST /circle/api/dissolve`（非建圈者 403）；pending 闸改 `TERMINAL`。本机 pytest **201 passed**（新增 29）。天翼 `833ee54`：圈 `8640321b-…`，提议 `acks=0` → 异议 `rejected` → 撤回 → 解散 403/200 → 解散后写操作 400。冒烟圈勿当真场。施工单 [`围坐会场_D1-D5缺陷修复施工单.md`](围坐会场_D1-D5缺陷修复施工单.md)。
 
 - `feat(kernel)` 品牌门页（2026-08-30）：`GET /` 返回静态品牌门页（定位、四轴、五条判据、围坐入口）；`/static/*` 挂载品牌 LOGO（216/1024）。不动契约（`/v1/ask` · `/v1/signal-ingest` · `/circle/*` · `/health` 行为不变）。pytest 172 passed（新增 7）。
 - `docs` 围坐初心备忘（2026-08-30）：不是聊天室（地板 + 本人 ack + 可追溯）；防自嗨三条硬指标；Git「merge 才是事实」。迷茫时重读。见 [`reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md`](reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md)。
