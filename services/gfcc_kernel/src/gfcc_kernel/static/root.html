@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="格契 GFCC · AI 时代的社区营造操作系统——人是目的，AI 是基础设施，社区是对象，营造是动作。">
+<meta name="theme-color" content="#2f6bff">
+<title>格契 GFCC · 社区共同体的牵引力层</title>
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --ink: #1f2329;
+    --muted: #6b7280;
+    --line: #e5e8ec;
+    --brand: #2f6bff;
+    --brand-soft: #eaf0ff;
+    --ok: #18a058;
+    --warn: #d97706;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; padding: 56px 24px 96px; }
+  header.brand {
+    display: flex; align-items: center; gap: 18px;
+    padding-bottom: 28px; border-bottom: 1px solid var(--line);
+  }
+  header.brand img { width: 64px; height: 64px; display: block; }
+  header.brand .name { font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
+  header.brand .name small { display: block; font-size: 13px; font-weight: 400; color: var(--muted); margin-top: 2px; letter-spacing: 0.2px; }
+
+  .slogan {
+    font-size: 22px; font-weight: 600; margin: 36px 0 12px; line-height: 1.45;
+  }
+  .slogan em { font-style: normal; color: var(--brand); }
+  .pos {
+    font-size: 15px; color: var(--muted); margin-bottom: 28px; max-width: 640px;
+  }
+
+  .axes {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px; margin: 28px 0 36px;
+  }
+  .axis {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px;
+  }
+  .axis h3 { font-size: 14px; font-weight: 700; color: var(--brand); letter-spacing: 0.4px; margin-bottom: 6px; }
+  .axis p { font-size: 13px; color: var(--muted); }
+
+  .cta-row { display: flex; flex-wrap: wrap; gap: 10px; margin: 32px 0 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 12px 22px; font-size: 15px; font-weight: 600;
+    border-radius: 10px; text-decoration: none; border: 1px solid transparent;
+    transition: transform .05s ease;
+  }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--brand); color: #fff; }
+  .btn-primary:hover { background: #1f57e6; }
+  .btn-ghost { background: #fff; color: var(--ink); border-color: var(--line); }
+  .btn-ghost:hover { border-color: var(--brand); color: var(--brand); }
+
+  .principles {
+    margin-top: 44px; padding: 20px 22px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .principles h2 { font-size: 14px; font-weight: 700; margin-bottom: 12px; color: var(--ink); }
+  .principles ul { list-style: none; padding: 0; display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .principles li { font-size: 13px; color: var(--muted); padding-left: 18px; position: relative; }
+  .principles li::before {
+    content: ""; position: absolute; left: 0; top: 9px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--brand);
+  }
+  .principles li b { color: var(--ink); font-weight: 600; }
+
+  footer {
+    margin-top: 48px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 12px; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: 12px 18px; justify-content: space-between;
+  }
+  footer a { color: var(--muted); text-decoration: none; border-bottom: 1px dashed transparent; }
+  footer a:hover { color: var(--brand); border-bottom-color: var(--brand); }
+  footer code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #eef0f3; padding: 1px 6px; border-radius: 4px; }
+
+  @media (max-width: 520px) {
+    .wrap { padding: 36px 18px 64px; }
+    header.brand img { width: 52px; height: 52px; }
+    header.brand .name { font-size: 22px; }
+    .slogan { font-size: 18px; }
+  }
+</style>
+</head>
+<body>
+<main class="wrap">
+
+  <header class="brand">
+    <img src="/static/brand-mark.png" srcset="/static/brand-mark.png 1x, /static/brand-mark@2x.png 2x" alt="格契 GFCC">
+    <div class="name">格契 GFCC<small>社区共同体的牵引力层 · Genesis · Fellowship · Consensus · Circle</small></div>
+  </header>
+
+  <p class="slogan">"格"取格局、品格、格物；<em>"契"</em>取契约、契合、默契。<br>以格局定契，以契合理格。</p>
+
+  <p class="pos">
+    AI 时代的社区营造操作系统——<b>人是目的，AI 是基础设施（放大器）</b>，社区是对象，营造是动作。
+    格契是那份牵引力，方向盘在共同体手里：你掌方向，我出力气。
+  </p>
+
+  <div class="cta-row">
+    <a class="btn btn-primary" href="/circle/">进入围坐会场 →</a>
+    <a class="btn btn-ghost" href="/health">服务健康</a>
+  </div>
+
+  <div class="axes">
+    <div class="axis">
+      <h3>Genesis · 起源</h3>
+      <p>价值与叙事的源头：定位、社区是为何而存在的。</p>
+    </div>
+    <div class="axis">
+      <h3>Fellowship · 同道</h3>
+      <p>成员与营造师：谁在这里，各自擅长什么。</p>
+    </div>
+    <div class="axis">
+      <h3>Consensus · 共识</h3>
+      <p>可追溯的协商：讨论怎么变成决定。</p>
+    </div>
+    <div class="axis">
+      <h3>Circle · 围坐</h3>
+      <p>一次只推进一条，发言权轮转，全员确认才落定。</p>
+    </div>
+  </div>
+
+  <section class="principles">
+    <h2>五条成功判据（业务不变量）</h2>
+    <ul>
+      <li><b>记得住：</b>七库记录被后续议题或行动引用（复用），而不是只存进去。</li>
+      <li><b>协商得了：</b>凡 <code>consensus_verified</code> 的提案，证据链 100% 可追溯。</li>
+      <li><b>贡献兑得现：</b><code>contribution.fulfilled</code> 回写到 <code>identity.capability_trace</code> 的闭环可核验。</li>
+      <li><b>人往高处走：</b>有成员完成 observer → participant → proposer 的跨越，每级都有真证据。</li>
+      <li><b>AI 不抢戏：</b>AI 可作证据，但 <em>人确认、人承诺</em>；AI 观察单独不足以上升角色。</li>
+    </ul>
+  </section>
+
+  <footer>
+    <div>
+      格契内核 <code id="ver">v1.1.0</code> · /v1/ask 单入口 · /v1/signal-ingest 信号线
+    </div>
+    <div>
+      <a href="https://github.com/szpeter2026/gfcc" target="_blank" rel="noopener">GitHub</a> ·
+      <a href="https://gitee.com/szbenyx/gfcc" target="_blank" rel="noopener">Gitee</a> ·
+      <a href="https://gfcc.servbay.host/circle/">围坐</a>
+    </div>
+  </footer>
+
+</main>
+</body>
+</html>

@@ -2,6 +2,7 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `feat(kernel)` 品牌门页（2026-08-30）：`GET /` 返回静态品牌门页（定位、四轴、五条判据、围坐入口）；`/static/*` 挂载品牌 LOGO（216/1024）。不动契约（`/v1/ask` · `/v1/signal-ingest` · `/circle/*` · `/health` 行为不变）。pytest 172 passed（新增 7）。
 - `docs` 围坐初心备忘（2026-08-30）：不是聊天室（地板 + 本人 ack + 可追溯）；防自嗨三条硬指标；Git「merge 才是事实」。迷茫时重读。见 [`reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md`](reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md)。
 - `feat(circle)` 旁观在场可见（2026-08-30）：本机完成施工单 §0–§9。`POST /circle/api/observe` · `unobserve`；`status.watchers`；`circle_watchers` 落库；A/B 同名单；旁观不进 parties。pytest 165 passed。**待天翼场次间上云**。见 [`围坐会场_旁观在场可见实施.md`](围坐会场_旁观在场可见实施.md)。
 - `docs` 旁观在场可见施工单（2026-08-29）：今晚圈实测 A/B 看不见 tester-c；根因是旁观无服务端登记。修复 = `POST /observe` + `status.watchers` + `circle_watchers`，不进 parties。本机已完成（08-30），天翼未上云。见 [`围坐会场_旁观在场可见实施.md`](围坐会场_旁观在场可见实施.md)。

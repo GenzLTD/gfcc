@@ -13,9 +13,12 @@ import logging
 import os
 from typing import Any, Dict, Optional
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .circle_flow import get_store as build_circle_flow
 from .circle_web import router as circle_web_router
@@ -138,6 +141,26 @@ async def v1_ask(request: Request, body: AskRequest) -> AskResponse:
 # --------------------------------------------------------------------------- #
 
 app.include_router(circle_web_router)
+
+
+# --------------------------------------------------------------------------- #
+# 品牌门面（GET /）+ 静态资源（/static/*，含 LOGO / 围坐会场 HTML 等）
+# --------------------------------------------------------------------------- #
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
+_ROOT_FILE = _STATIC_DIR / "root.html"
+
+app.mount("/static", StaticFiles(directory=str(_STATIC_DIR)), name="static")
+
+
+@app.get("/", response_class=HTMLResponse, include_in_schema=False)
+async def root_index() -> HTMLResponse:
+    """品牌门页：定位、四轴、围坐入口、五条判据。
+
+    纯展示、无业务接口；不动 `/v1/ask` / `/v1/signal-ingest` / `/circle/*`。
+    契约真源见 `docs/`，工程口径见 `docs/ports/README.md`。
+    """
+    return HTMLResponse(_ROOT_FILE.read_text(encoding="utf-8"))
 
 
 # --------------------------------------------------------------------------- #
