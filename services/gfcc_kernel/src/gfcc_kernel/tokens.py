@@ -56,7 +56,8 @@ def load_secret(secret_arg: Optional[str] = None, kernel_root: Optional[Path] = 
     root = kernel_root or Path(__file__).resolve().parents[2]
     env_file = root / ".env"
     if env_file.exists():
-        for line in env_file.read_text().splitlines():
+        # .env 含中文注释（UTF-8）；Windows 默认 GBK，必须显式 encoding
+        for line in env_file.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if line.startswith("ETHOS_AUTH_SECRET="):
                 return line.split("=", 1)[1].strip().strip('"').strip("'")

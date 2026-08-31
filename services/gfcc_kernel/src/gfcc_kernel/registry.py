@@ -56,6 +56,8 @@ class PortRegistry:
             "consensus": self._consensus,
             "contribution": self._contribution,
         }
+        # tools_extra 槽：profile.demo 厂商工具（knowledge.demopeter 等），非一等端口
+        self._tools_extra: Dict[str, Any] = {}
 
     def get(self, port: str) -> Optional[Any]:
         return self._ports.get(port)
@@ -65,6 +67,29 @@ class PortRegistry:
 
     def list_ports(self) -> List[str]:
         return list(self._ports.keys())
+
+    # ------------------------------------------------------------------ #
+    # tools_extra 槽（L3 profile.demo）：注册厂商工具，不进一等端口
+    # ------------------------------------------------------------------ #
+
+    def bind_store(self, store: Any) -> None:
+        """替换 store 槽（如 agentmemory_iii），重建 memory 端口。
+
+        dispatch 不 import 实现；装配面经此方法把 store 注入注册表。
+        """
+        self._store = store
+        self._memory = MemoryAdapter(store=store)
+        self._ports["memory"] = self._memory
+
+    def register_tool(self, name: str, adapter: Any) -> None:
+        """注册厂商工具（knowledge.demopeter / job_match / poetry / credit / mbti）。"""
+        self._tools_extra[name] = adapter
+
+    def get_tool(self, name: str) -> Optional[Any]:
+        return self._tools_extra.get(name)
+
+    def list_tools(self) -> List[str]:
+        return list(self._tools_extra.keys())
 
     def build_context(self, session_id: Optional[str], circle_id: Optional[str],
                       dialog_mode: str, policy: Any, llm: Any) -> KernelContext:

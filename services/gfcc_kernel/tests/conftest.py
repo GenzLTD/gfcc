@@ -12,6 +12,8 @@ app 单例在 import 时会读真实配置并把数据写进 data/memory.db，�
   （验签分支由用例内 monkeypatch 单独覆盖）
 - ETHOS_AUTH_SECRET 显式置空：即使 .env 配了密钥，单测也强制走 stub 验签
   （HS256 分支由用例内 monkeypatch 单独覆盖）
+- GFCC_MODE 钉死 gfcc.default：单测默认不装配 L3 厂商适配器
+  （profile.demo 装配由 tests/test_profile_demo.py 显式构造 + monkeypatch 覆盖）
 """
 
 import os
@@ -21,3 +23,4 @@ os.environ["CIRCLE_FLOW_PROVIDER"] = "stub"
 os.environ["LLM_PROVIDER"] = "stub"
 os.environ.pop("SIGNAL_INGEST_SECRET", None)
 os.environ["ETHOS_AUTH_SECRET"] = ""
+os.environ["GFCC_MODE"] = "gfcc.default"

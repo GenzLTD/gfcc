@@ -2,8 +2,11 @@
 
 - GET  /health            健康检查（对齐契约：无鉴权）。
 - POST /v1/ask            单入口（AskRequest → AskResponse 信封，严格契约）。
+- POST /v1/knowledge/query   L3 工具入口（knowledge.demopeter RAG；默认 404）。
 - 认证：ethos 纯验证者；401 未认证 / 403 无权限 / 429 配额。
-- 五槽装配 + 五端口默认 stub 组合（gfcc.default）。
+- 五槽装配 + 五端口默认 stub 组合（gfcc.default）；
+  GFCC_MODE=profile.demo 时经 adapters.bind_profile_demo() 接入本地组件
+  （store 槽 → agentmemory_iii、注册 knowledge.demopeter），可卸载。
 """
 
 from __future__ import annotations
@@ -20,6 +23,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .adapters import bind_profile_demo
+from .adapters.agentmemory_store import AgentMemoryIIIStore
 from .circle_flow import get_store as build_circle_flow
 from .circle_web import router as circle_web_router
 from .dispatcher import parse_then_dispatch
@@ -60,7 +65,17 @@ _security = build_security()
 _policy = KernelPolicy(_security)
 _llm = build_llm()
 
-_store_provider = "sqlite" if isinstance(_store, SQLiteStore) else "stub"
+# L3 profile.demo：总装 + 本地组件（agentmemory / demopeter）联调装配。
+# 默认 gfcc.default（禁止厂商适配器）；切换只靠 GFCC_MODE，可随时卸掉回默认栈。
+_mode = os.getenv("GFCC_MODE", "gfcc.default").strip().lower()
+if _mode == "profile.demo":
+    _store = bind_profile_demo(_registry)
+
+_store_provider = (
+    "agentmemory_iii" if isinstance(_store, AgentMemoryIIIStore)
+    else "sqlite" if isinstance(_store, SQLiteStore)
+    else "stub"
+)
 _llm_provider = "ollama" if isinstance(_llm, OllamaLLM) else "stub"
 
 
@@ -86,9 +101,10 @@ async def health() -> Dict[str, Any]:
         "service": "gfcc_kernel",
         "version": "1.1.0",
         "ports": _registry.list_ports(),
-        "mode": "gfcc.default",
+        "mode": _mode,
         "store": _store_provider,
         "llm": _llm_provider,
+        "tools_extra": _registry.list_tools(),
         "empty_on_boot": _store_provider == "stub",
     }
 
@@ -254,6 +270,38 @@ async def v1_signal_ingest(request: Request) -> JSONResponse:
             "port": port,
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# /v1/knowledge/query（L3 profile.demo：knowledge.demopeter RAG 工具入口）
+# --------------------------------------------------------------------------- #
+# 非一等端口（registry.v1.json：Not a 格契 first-class port），对标 signal-ingest
+# 的并列工具入口。默认模式（工具未注册）一律 404；装配后才可查询。
+# 红线：输出只作参考证据，不进 identity/memory 主存；洞察走 memory.observe。
+
+@app.post("/v1/knowledge/query")
+async def v1_knowledge_query(request: Request) -> JSONResponse:
+    _verify_request(request)
+    tool = _registry.get_tool("knowledge.demopeter")
+    if tool is None:
+        raise HTTPException(
+            status_code=404,
+            detail="knowledge.demopeter not registered (GFCC_MODE != profile.demo)",
+        )
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status_code=422, detail="request body must be JSON")
+    question = str((body or {}).get("question", "")).strip()
+    if not question:
+        raise HTTPException(status_code=422, detail="question is required")
+    top_k = int((body or {}).get("top_k", 5))
+    threshold = float((body or {}).get("threshold", 0.5))
+    _policy.audit("knowledge_query", resource="", meta={"top_k": top_k})
+    result = tool.query(question, top_k=top_k, threshold=threshold)
+    if not result.ok:
+        return JSONResponse(status_code=502, content={"detail": result.error})
+    return JSONResponse(content=result.data)
 
 
 # --------------------------------------------------------------------------- #
