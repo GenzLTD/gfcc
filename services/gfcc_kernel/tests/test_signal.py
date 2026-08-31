@@ -12,7 +12,6 @@
 与 test_app.py 同款同步 TestClient 写法（绕开 pytest-asyncio 配置）。
 """
 
-import hashlib
 import json
 import logging
 import uuid
@@ -22,14 +21,15 @@ from fastapi.testclient import TestClient
 
 from gfcc_kernel import app as app_module
 from gfcc_kernel.app import app
-from gfcc_kernel.signal import build_hmac_signature
+from gfcc_kernel.signal import build_hmac_signature, email_to_user_id_hash
 from gfcc_kernel.slots import SQLiteStore, StubStore
 
 client = TestClient(app)
 
 SECRET = "test-signal-secret"
-HASH_A = hashlib.sha256("alice@example.com".encode()).hexdigest()
-HASH_B = hashlib.sha256("bob@example.com".encode()).hexdigest()
+# 与 test_email_hash.py 同一表达式（email_to_user_id_hash），禁止两套算法
+HASH_A = email_to_user_id_hash("alice@example.com")
+HASH_B = email_to_user_id_hash("bob@example.com")
 
 
 def _envelope(**over):

@@ -3,9 +3,13 @@
 用法：
     .venv/bin/python scripts/issue_persona_tokens.py                    # 占位 4 人，输出到终端
     .venv/bin/python scripts/issue_persona_tokens.py --subs alice bob   # 自定义 sub
+    .venv/bin/python scripts/issue_persona_tokens.py --emails a@x b@y   # 从邮箱出号（生态号 sha256 hex）
     .venv/bin/python scripts/issue_persona_tokens.py --out /tmp/persona_tokens.json
     .venv/bin/python scripts/issue_persona_tokens.py --subs alice \
         --invite-base http://14.29.216.219/circle/ --invite-days 7     # 顺带发邀请码
+
+- --emails 与 --subs 互斥；每人 sub = email_to_user_id_hash(email)（64 位小写 hex，
+  Bolent 入驻预埋 §3），明文邮箱不进 JWT、不进 --out JSON。
 
 - 密钥：优先 --secret；否则读 services/gfcc_kernel/.env 的 ETHOS_AUTH_SECRET
   （与内核同一把；≠ SIGNAL_INGEST_SECRET，勿混用）。
@@ -32,6 +36,7 @@ _KERNEL_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_KERNEL_ROOT / "src"))
 
 from gfcc_kernel.invites import InviteStore, generate_code  # noqa: E402
+from gfcc_kernel.signal import email_to_user_id_hash  # noqa: E402
 from gfcc_kernel.tokens import issue_token, load_secret  # noqa: E402
 
 
@@ -44,6 +49,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="签发 Step1 每人一张 ethos JWT（可选带邀请码）")
     parser.add_argument("--subs", nargs="+", default=None,
                         help="sub 列表（默认占位 4 人，按报名表替换）")
+    parser.add_argument("--emails", nargs="+", default=None,
+                        help="邮箱列表（生态号：sub = sha256(email.lower().strip()) hex；与 --subs 互斥）")
     parser.add_argument("--secret", default=None, help="HS256 密钥（默认读 .env 的 ETHOS_AUTH_SECRET）")
     parser.add_argument("--out", default=None, help="输出 JSON 文件（默认只打印；永不写 secret）")
     parser.add_argument("--days", type=int, default=30, help="token 有效期（天）")
@@ -56,7 +63,13 @@ def main() -> None:
     secret = load_secret(args.secret)
     if not secret:
         sys.exit("ETHOS_AUTH_SECRET 未配置：请先配 services/gfcc_kernel/.env（与签发脚本同一把，≠ SIGNAL_INGEST_SECRET）")
-    subs: List[str] = args.subs or ["tester-a", "tester-b", "tester-c", "tester-d"]
+    if args.subs is not None and args.emails is not None:
+        sys.exit("--subs 与 --emails 互斥，只能二选一")
+    if args.emails is not None:
+        # 生态号：明文邮箱只在这里出现，绝不下落 JWT / --out / 终端
+        subs = [email_to_user_id_hash(email) for email in args.emails]
+    else:
+        subs = args.subs or ["tester-a", "tester-b", "tester-c", "tester-d"]
     if len(subs) != len(set(subs)):
         sys.exit("subs 有重复，每人一把独立 token，禁止共用")
 

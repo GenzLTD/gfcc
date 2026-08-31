@@ -2,6 +2,7 @@
 
 ## Unreleased（实现层 / 工程基建）
 
+- `feat(kernel)` Bolent 入驻预埋（2026-08-31）：生态号 = `sha256(email.lower().strip())` 64 位小写 hex；`signal.email_to_user_id_hash`（空串 ValueError）；`issue_persona_tokens.py --emails`（与 `--subs` 互斥，sub=生态号，`--out` 禁止 email 键）；户口本 fixture [`experiments/bolent_membership.fixture.json`](experiments/bolent_membership.fixture.json)（schema `bolent.membership.v0`）。pytest **241 passed**（新增 19）。**未 bump 契约**：L0 1.2.0 / 信号 1.0.0，`contracts/` 零 diff。见 [`experiments/Bolent入驻预埋_Windows行动方案.md`](experiments/Bolent入驻预埋_Windows行动方案.md)。
 - `feat(consensus)` 契约 **1.2.0**（2026-08-30）：L0 家族锁步升次版本（`validate_contracts` 要求同族同号）。`consensus.v1.json` 加 `rejected`/`withdrawn` 状态、`reject`/`withdraw`/`expire` operations、异议/撤回字段；`roles.v1.json` participant 补 `consensus.reject`/`withdraw`。不改全员 ack、不升主版本。见 [`围坐会场_D1-D5缺陷修复施工单.md`](围坐会场_D1-D5缺陷修复施工单.md) §0.3。
 - `fix(circle)` D1–D5 缺陷修复（2026-08-30 本机 / **2026-08-31 天翼冒烟 16/16**）：D4 入场剥空白 + 401 文案；D1 proposer 确认提示（不自动 ack）；D2 `POST /circle/api/reject`；D3 withdraw + 惰性 TTL；D5 `POST /circle/api/dissolve`（非建圈者 403）；pending 闸改 `TERMINAL`。本机 pytest **201 passed**（新增 29）。天翼 `833ee54`：圈 `8640321b-…`，提议 `acks=0` → 异议 `rejected` → 撤回 → 解散 403/200 → 解散后写操作 400。冒烟圈勿当真场。施工单 [`围坐会场_D1-D5缺陷修复施工单.md`](围坐会场_D1-D5缺陷修复施工单.md)。
 

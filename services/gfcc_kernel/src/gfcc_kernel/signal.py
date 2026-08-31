@@ -34,6 +34,24 @@ MBTI_TYPES = {
 
 HASH_RE = re.compile(r"^[a-f0-9]{64}$")
 
+
+def email_to_user_id_hash(email: str) -> str:
+    """生态号：sha256(utf-8(email.lower().strip())) 的 64 位小写 hex。
+
+    与 contracts/signal.envelope.v1.json 的 user_id_hash 同一算法（Bolent 入驻
+    预埋 §3 钉死）：大小写折叠 + 首尾空白剥离后再哈希。明文邮箱不进 JWT、
+    不进 signal_log、不进 --out JSON——任何地方只允许出现 64 位 hex。
+
+    标准向量（docs/experiments/Bolent入驻预埋_Windows行动方案.md §3）：
+      alice@example.com / Alice@Example.COM / ' alice@example.com '
+      → ff8d9819fc0e12bf0d24892e45987e249a28dce836a85cad60e28eaaa8c6d976
+
+    非法输入（非字符串或剥离后为空）抛 ValueError。
+    """
+    if not isinstance(email, str) or not email.strip():
+        raise ValueError("email must be a non-empty string")
+    return hashlib.sha256(email.lower().strip().encode("utf-8")).hexdigest()
+
 # 信号类型 → 端口（W3 路由，确定性，不经 llm 槽）
 SIGNAL_ROUTE = {
     "consensus_match": "consensus",
