@@ -11,6 +11,7 @@
 from __future__ import annotations
 
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from .envelope import AskRequest, AskResponse, AskResult, ReceiptItem
@@ -95,7 +96,7 @@ def _execute_port(port: str, ctx: KernelContext, request: AskRequest) -> Dict[st
     session_id = request.context.session_id
 
     if port == "circle":
-        if re.search(r"建圈|create|新建|发起", m):
+        if re.search(r"建圈|创建|create|新建|发起", m):
             name = request.context.circle_id or "default-circle"
             r = adapter.create(ctx.policy.sub if ctx.policy else "system", name)
             return _wrap(r, "circle")
@@ -145,20 +146,76 @@ def _execute_port(port: str, ctx: KernelContext, request: AskRequest) -> Dict[st
         return _wrap(r, "memory")
 
     if port == "consensus":
+        sub = ctx.policy.sub if ctx.policy else "system"
+        # 提议：parties 来自圈内已入座真人（B2 修复，不再硬编码 ["member-a","member-b"]）
         if re.search(r"提议|propose|发起", m):
             if not circle_id:
                 return {"status": "error", "error": "circle_id required to propose"}
-            r = adapter.propose(circle_id, msg, ["member-a", "member-b"], ctx.policy.sub if ctx.policy else "system")
+            parties = _circle_parties(ctx, circle_id)
+            if not parties or len(parties) < 2:
+                return {"status": "error", "error": "circle parties required (>=2 seated members)"}
+            subject = _strip_action_prefix(msg, ["提议", "propose", "发起"])
+            r = adapter.propose(circle_id, subject, parties, sub)
+            return _wrap(r, "consensus")
+        # 打分：主持人显式 score → awaiting_ack（契约：分数无证据无效）
+        if re.search(r"打分|score", m):
+            pid = _extract_uuid(m)
+            if not pid:
+                return {"status": "error", "error": "proposal_id required for score (e.g. 打分 <id> 90 理由)"}
+            score = _extract_score(m)
+            if score is None:
+                return {"status": "error", "error": "score value required (e.g. 打分 <id> 90 理由)"}
+            evidence = [{
+                "by_sub": sub,
+                "basis": _strip_action_prefix(msg, ["打分", "score"]),
+                "at": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            }]
+            r = adapter.score(pid, score, evidence)
+            return _wrap(r, "consensus")
+        # 确认：真人 party ack（AI 不能 ack，端口层已校验）
+        if re.search(r"确认|同意|acknowledge", m):
+            pid = _extract_uuid(m) or _latest_proposal_id(adapter, circle_id)
+            if not pid:
+                return {"status": "error", "error": "proposal_id required for ack (e.g. 确认 <id>)"}
+            r = adapter.acknowledge(pid, sub)
+            return _wrap(r, "consensus")
+        # 状态回看：契约 can_complete 判定
+        if re.search(r"查看|状态|status", m):
+            pid = _extract_uuid(m) or _latest_proposal_id(adapter, circle_id)
+            if not pid:
+                return {"status": "error", "error": "proposal_id required for status (e.g. 查看 <id>)"}
+            r = adapter.get_status(pid)
             return _wrap(r, "consensus")
         return {
             "status": "ok",
-            "data": {"proposals": adapter.list_all(), "hint": "consensus: propose/score/acknowledge/get_status"},
+            "data": {"proposals": adapter.list_all(), "hint": "consensus: propose/score/ack/get_status"},
         }
 
     if port == "contribution":
-        if re.search(r"认定|attest|贡献", m):
-            r = adapter.attest(circle_id or "default", ctx.policy.sub if ctx.policy else "system",
-                               "peer-sub", msg)
+        sub = ctx.policy.sub if ctx.policy else None
+        # 兑现：attested → fulfilled，端口层 mint capability_trace（B3 修复）
+        if re.search(r"兑现|fulfill", m):
+            if not sub:
+                return {"status": "error", "error": "principal sub missing"}
+            rid = _extract_uuid(m)
+            if not rid:
+                return {"status": "error", "error": "record_id required for fulfill (e.g. 兑现 <id>)"}
+            r = adapter.fulfill(rid, sub)
+            return _wrap(r, "contribution")
+        # 认定：attestor=本人（说话人），subject=消息里的他人（B3 修复，去掉写死 peer-sub）
+        if re.search(r"认定|attest|完成了", m):
+            if not circle_id:
+                return {"status": "error", "error": "circle_id required to attest"}
+            if not sub:
+                return {"status": "error", "error": "principal sub missing"}
+            mm = re.search(r"([a-zA-Z][\w.\-]*)\s*(?:完成了|完成|done)", m)
+            if not mm:
+                return {"status": "error", "error": "attest requires subject sub: 认定 <subject> 完成了 <claim>"}
+            subject_sub = mm.group(1)
+            if subject_sub == sub:
+                return {"status": "error", "error": "cannot attest solely for oneself as the only evidence"}
+            claim = _strip_attest_prefix(msg)
+            r = adapter.attest(circle_id, subject_sub, sub, claim)
             return _wrap(r, "contribution")
         return {
             "status": "ok",
@@ -191,6 +248,59 @@ def _strip_action_prefix(msg: str, prefixes: List[str]) -> str:
         if idx >= 0:
             return msg[idx + len(p):].strip(" ：:，,。")
     return msg
+
+
+# --------------------------------------------------------------------------- #
+# B2/B3 解析辅助（信封层，stub 语义：正则为主，llm 槽可接管）
+# --------------------------------------------------------------------------- #
+
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def _extract_uuid(text: str) -> Optional[str]:
+    m = _UUID_RE.search(text.lower())
+    return m.group(0) if m else None
+
+
+def _extract_score(text: str) -> Optional[float]:
+    """提取 0-100 分数。uuid 段带连字符，不会被空白边界误命中。"""
+    m = re.search(r"(?:^|\s)([0-9]{1,3})(?:\s|$|。)", text)
+    if not m:
+        return None
+    try:
+        value = float(m.group(1))
+    except ValueError:
+        return None
+    return value if 0 <= value <= 100 else None
+
+
+def _strip_attest_prefix(msg: str) -> str:
+    text = re.sub(r"(认定|attest)", "", msg, flags=re.I)
+    return text.strip(" ：:，,。")
+
+
+def _circle_parties(ctx: KernelContext, circle_id: Optional[str]) -> Optional[List[str]]:
+    """从圈内已入座真人取 parties（B2：不再硬编码假人）。"""
+    if not circle_id:
+        return None
+    circ = ctx.tools.get("circle") if ctx.tools else None
+    if circ is None:
+        return None
+    r = circ.get(circle_id)
+    if not getattr(r, "ok", False):
+        return None
+    members = r.data.get("circle", {}).get("members", [])
+    return [m["sub"] for m in members]
+
+
+def _latest_proposal_id(adapter: Any, circle_id: Optional[str]) -> Optional[str]:
+    """ack/status 未带 id 时，取该圈最近一条非终态提案兜底。"""
+    for p in reversed(adapter.list_all()):
+        if circle_id and p.get("circle_id") != circle_id:
+            continue
+        if p.get("status") in ("proposed", "scored", "consensus_passed", "awaiting_ack"):
+            return p.get("id")
+    return None
 
 
 def _infer_library(msg: str, ctx: AskRequest) -> str:
@@ -271,6 +381,14 @@ def _summarize(port: str, data: Dict[str, Any]) -> str:
             return "memory: no records yet (empty data is legal)"
         return f"memory: {data.get('count', len(recs))} record(s) found"
     if port == "consensus":
+        if "proposal" in data:
+            p = data["proposal"]
+            score = p.get("score")
+            return (
+                f"consensus: {p.get('status')}"
+                + (f" score={score}" if score is not None else "")
+                + f" acks={len(p.get('acks', []))}/{len(p.get('parties', []))}"
+            )
         props = data.get("proposals", [])
         return f"consensus: {len(props)} proposal(s)"
     if port == "contribution":
