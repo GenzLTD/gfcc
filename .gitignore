@@ -22,6 +22,11 @@ chroma/
 .chroma-cache/
 *.log
 
+# ===== 构建产物 =====
+build/
+dist/
+services/tenet/build/
+
 # ===== 一次性归集工具（不入库） =====
 .setup/
 
