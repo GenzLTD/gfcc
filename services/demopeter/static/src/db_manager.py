@@ -151,6 +151,13 @@ class DBManager:
             ).fetchall()
             return [dict(r) for r in rows]
 
+    # 高频虚词/疑问词：参与 FTS OR 前缀匹配只会命中无关 chunk
+    _STOPWORDS = frozenset({
+        "什么", "怎么", "为什么", "如何", "哪些", "哪个", "这个", "那个",
+        "讲了", "说的是", "是什么", "请问", "有没有", "是否", "可以", "应该",
+        "一下", "一个", "一种", "这个", "就是", "不是", "还有", "关于",
+    })
+
     def _tokenize(self, text: str) -> list[str]:
         """中文分词 + 提取有意义的检索词"""
         tokens = []
@@ -161,7 +168,7 @@ class DBManager:
             words = text.split()
         for w in words:
             w = w.strip()
-            if len(w) > 1:
+            if len(w) > 1 and w not in self._STOPWORDS:
                 tokens.append(w)
         return tokens
 
@@ -187,7 +194,9 @@ class DBManager:
 
             # 1. FTS5 全文搜索
             try:
-                fts_query = ' OR '.join(f'"{t}"' for t in tokens)
+                # unicode61 把连续 CJK 视为一个 token（如「数理化通俗演义」），
+                # jieba 切出的短词需用前缀通配 * 才能命中，否则精确匹配恒空。
+                fts_query = ' OR '.join(f'"{t}"*' for t in tokens)
                 rows = conn.execute(
                     """SELECT c.id, c.document_id, c.chunk_index, c.content, 
                               c.char_count, c.metadata, d.title as doc_title,

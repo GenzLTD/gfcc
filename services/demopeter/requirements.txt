@@ -13,3 +13,6 @@ requests>=2.31
 mcp>=1.0
 pdfplumber>=0.11
 pypdf>=4.0
+pymupdf>=1.24
+sentence-transformers>=6.0.1
+# Chroma 查询嵌入：shibing624/text2vec-base-chinese（sentence-transformers 会拉取 torch）

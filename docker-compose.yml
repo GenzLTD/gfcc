@@ -114,6 +114,7 @@ services:
       SEARCH_MODE: hybrid
       HYBRID_RRF_K: "60"
       PGVECTOR_ENABLED: "false"
+      HF_ENDPOINT: ${HF_ENDPOINT:-https://hf-mirror.com}
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       WEB_HOST: 0.0.0.0
       WEB_PORT: "5220"

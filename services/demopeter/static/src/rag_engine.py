@@ -88,7 +88,7 @@ class RAGEngine:
         return hits
 
     def _search_hybrid(self, query_text: str, top_k: int = 5,
-                       threshold: float = 0.5) -> tuple[list[dict], str]:
+                       threshold: float = 0.7) -> tuple[list[dict], str]:
         """向量 + 关键词 RRF 融合，并按 threshold 过滤低相关结果。"""
         fetch_k = max(top_k * 3, 15)
         # 向量通道：阈值略放宽，融合后再统一过滤
@@ -136,7 +136,7 @@ class RAGEngine:
         return [], mode_label
 
     def _search(self, query_text: str, top_k: int = 5,
-                threshold: float = 0.5) -> tuple[list[dict], str]:
+                threshold: float = 0.7) -> tuple[list[dict], str]:
         mode = config.SEARCH_MODE.lower()
 
         if mode == "keyword":
@@ -154,7 +154,7 @@ class RAGEngine:
         return self._keyword_search(query_text, top_k=top_k), "keyword_fts5"
 
     def search_only(self, query_text: str, top_k: int = 5,
-                    threshold: float = 0.5) -> dict:
+                    threshold: float = 0.7) -> dict:
         """仅检索，不调用 LLM（MCP / 压测用）。"""
         start = time.time()
         hits, mode = self._search(query_text, top_k=top_k, threshold=threshold)
@@ -255,12 +255,12 @@ class RAGEngine:
         return f"匹配度 {pct:.0f}%"
 
     def _retrieval_only_answer(self, hits: list[dict], ai_hint: str,
-                               threshold: float = 0.5) -> str:
+                               threshold: float = 0.7) -> str:
         lines = [
             "⚠️ AI 生成未启用：" + ai_hint,
             "",
             "以下为知识库检索结果（检索模式，非 AI 总结）。",
-            f"当前相似度阈值: {threshold}（可在下方调节，混合检索建议 0.3~0.5）",
+            f"当前相似度阈值: {threshold}（可在下方调节，text2vec 建议 0.7 左右）",
             "",
         ]
         if hits and hits[0].get("_below_threshold"):
@@ -283,7 +283,7 @@ class RAGEngine:
         return "\n".join(lines).strip()
 
     def query(self, query_text: str, top_k: int = 5,
-              threshold: float = 0.5) -> RAGResult:
+              threshold: float = 0.7) -> RAGResult:
         """执行 RAG 查询"""
         start = time.time()
 
@@ -344,7 +344,7 @@ class RAGEngine:
         )
 
     def query_stream(self, query_text: str, top_k: int = 5,
-                     threshold: float = 0.5) -> tuple:
+                     threshold: float = 0.7) -> tuple:
         """流式 RAG 查询，返回 (生成器, hits)"""
         hits, retrieval_mode = self._search(
             query_text, top_k=top_k, threshold=threshold,

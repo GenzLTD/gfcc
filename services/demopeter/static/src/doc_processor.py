@@ -59,7 +59,26 @@ class DocumentProcessor:
 
     @staticmethod
     def _extract_pdf(file_path: Path) -> str:
-        """PDF 文本提取 — 优先使用 pdfplumber，回退 pypdf"""
+        """PDF 文本提取 — 优先 PyMuPDF(fitz，提取能力最强)，回退 pdfplumber，再回退 pypdf"""
+        # 1) PyMuPDF / MuPDF（对嵌入字体/复杂编码的 PDF 提取能力最强）
+        try:
+            import pymupdf as fitz  # type: ignore
+        except ImportError:  # pragma: no cover
+            try:
+                import fitz  # type: ignore
+            except ImportError:
+                fitz = None
+        if fitz is not None:
+            try:
+                with fitz.open(str(file_path)) as doc:
+                    parts = [page.get_text() for page in doc]
+                text = "\n\n".join(parts)
+                if len(text) > 100:
+                    return text
+            except Exception:  # noqa: BLE001
+                pass
+
+        # 2) pdfplumber
         text_parts = []
         try:
             import pdfplumber
@@ -73,6 +92,7 @@ class DocumentProcessor:
         except ImportError:
             pass
 
+        # 3) pypdf（最后回退）
         from pypdf import PdfReader
         reader = PdfReader(str(file_path))
         for page in reader.pages:
@@ -147,6 +167,19 @@ class DocumentProcessor:
             if not para.strip():
                 continue
 
+            # 单段超长（如 PDF 整章挤成一段，可达数万字）→ 硬切成块，
+            # 避免生成超长 chunk 触发 embedding 上下文超限
+            if len(para) > self.chunk_size * 2:
+                for i in range(0, len(para), self.chunk_size):
+                    piece = para[i:i + self.chunk_size].strip()
+                    if piece:
+                        chunks.append({
+                            "index": len(chunks),
+                            "content": piece,
+                            "metadata": {**meta, "char_count": len(piece)}
+                        })
+                continue
+
             if len(current_chunk) + len(para) <= self.chunk_size:
                 current_chunk += para + "\n\n"
             else:
@@ -202,6 +235,9 @@ class DocumentProcessor:
             if not file_path.is_file():
                 continue
             if file_path.suffix.lower() in self.SKIP_SUFFIXES:
+                continue
+            # Office 临时文件（~$xxx.docx）无内容，跳过
+            if file_path.name.startswith("~$"):
                 continue
             if file_path.suffix.lower() not in self.SUPPORTED_TYPES:
                 continue

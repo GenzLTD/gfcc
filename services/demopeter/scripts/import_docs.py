@@ -31,6 +31,9 @@ def main():
     vector_store = VectorStore()
     pgvector_store = PgvectorStore()
 
+    # 扫描版 PDF（无文字层）提取出的文本极少，低于此阈值视为噪声文档，跳过不入库
+    MIN_CHARS = 1500
+
     doc_dir = Path(args.path)
     if not doc_dir.exists():
         console.print(f"[red]❌ 目录不存在: {doc_dir}[/red]")
@@ -74,13 +77,22 @@ def main():
                 continue
 
             try:
+                _, chunks = processor.process_file(file_info["file_path"])
+                total_chars = sum(len(c.get("content", "")) for c in chunks)
+                if total_chars < MIN_CHARS:
+                    console.print(
+                        f"  [yellow]⏭ 扫描版/空文档: {file_info['title']} ({total_chars} chars)[/yellow]"
+                    )
+                    skipped += 1
+                    progress.advance(task)
+                    continue
+
                 doc_id = db.register_document(
                     title=file_info["title"],
                     file_path=file_info["file_path"],
                     doc_type=file_info["doc_type"],
                     file_size=file_info.get("file_size", 0),
                 )
-                _, chunks = processor.process_file(file_info["file_path"])
                 db.save_chunks(doc_id, chunks)
 
                 if vector_store.is_available:

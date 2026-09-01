@@ -70,7 +70,7 @@ RAG 问答（同步）。
 {
     "query": "你的问题",
     "top_k": 5,
-    "threshold": 0.5
+    "threshold": 0.7
 }
 ```
 
@@ -95,7 +95,7 @@ RAG 问答（同步）。
 
 流式 RAG 问答（SSE）。
 
-参数：`?query=你的问题&top_k=5&threshold=0.5`
+参数：`?query=你的问题&top_k=5&threshold=0.7`
 
 **SSE 事件：**
 ```

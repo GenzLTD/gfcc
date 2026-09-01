@@ -9,14 +9,83 @@ from typing import Optional
 from config.settings import config
 from config.logging_config import get_logger
 
+# text2vec-base-chinese 嵌入（102M, 768 维, C-MTEB 前列；重建索引统一用 MPS）
+EMBED_MODEL = "shibing624/text2vec-base-chinese"
+# 嵌入输入安全长度：与 scripts/reindex_embeddings.py 的 MAX_CHARS 一致（512 token 内
+# 检索语义最集中，且与库内向量截断对齐，保证查询/写入语义一致）
+EMBED_MAX_CHARS = 512
+# text2vec-base-chinese 向量维度
+EMBED_DIM = 768
+
 logger = get_logger("vector_store")
+
+try:
+    import chromadb
+except ImportError:  # 优雅降级：无 chroma 时 STEmbeddingFunction 退化为普通类
+    chromadb = None
+
+if chromadb is not None:
+    _ST_BASE = chromadb.api.types.EmbeddingFunction[list[str]]
+else:
+    _ST_BASE = object
+
+
+class STEmbeddingFunction(_ST_BASE):
+    """sentence-transformers 嵌入函数（text2vec-base-chinese）。
+
+    MPS 优先、CPU 回退；encode 时 L2 归一化（与 squared_l2_to_cosine_similarity
+    的前提一致）。输入截断 EMBED_MAX_CHARS，与重建索引时一致。
+    chroma 1.5.9 的 EmbeddingFunction 接口重构为方法（name()/get_config()/
+    build_from_config()），未实现会 is_legacy()=True 而静默降级为默认嵌入函数，
+    因此此处完整实现以保证查询嵌入始终走 text2vec。
+    """
+    def __init__(self, model_name: str = EMBED_MODEL):
+        self._model_name = model_name
+        import torch
+        device = "mps" if torch.backends.mps.is_available() else "cpu"
+        from sentence_transformers import SentenceTransformer
+        self._model = SentenceTransformer(model_name, device=device)
+
+    @staticmethod
+    def name() -> str:
+        return EMBED_MODEL
+
+    def default_space(self) -> str:
+        return "cosine"
+
+    def get_config(self) -> dict:
+        return {"model_name": self._model_name}
+
+    @staticmethod
+    def build_from_config(config: dict) -> "STEmbeddingFunction":
+        return STEmbeddingFunction(config.get("model_name", EMBED_MODEL))
+
+    def __call__(self, input: list[str]):
+        texts = [t[:EMBED_MAX_CHARS] for t in input]
+        vecs = self._model.encode(
+            texts, batch_size=min(len(texts), 128),
+            normalize_embeddings=True, show_progress_bar=False,
+        )
+        return [v.tolist() for v in vecs]
+
+
+# ST 嵌入函数单例（模型加载 ~3s，避免每次调用重建）
+_embed_fn = None
+
+
+def _get_embed_fn() -> STEmbeddingFunction:
+    global _embed_fn
+    if _embed_fn is None:
+        _embed_fn = STEmbeddingFunction()
+    return _embed_fn
 
 
 def squared_l2_to_cosine_similarity(squared_l2: float) -> float:
     """将 Chroma 返回的 squared L2 距离转为余弦相似度 [0, 1]。
 
-    前提：embedding 向量已 L2 归一化（DefaultEmbeddingFunction / all-MiniLM-L6-v2 满足）。
-    对归一化向量有 ||a-b||² = 2(1 - cos(a,b))，故 cos_sim = 1 - squared_l2/2。
+    前提：embedding 向量已 L2 归一化（STEmbeddingFunction / text2vec 的
+    encode(normalize_embeddings=True) 满足）。对归一化向量有
+    ||a-b||² = 2(1 - cos(a,b))，故 cos_sim = 1 - squared_l2/2。
     若换用未归一化的 embedding 模型，需改用对应距离→相似度公式。
     """
     similarity = 1.0 - squared_l2 / 2.0
@@ -81,21 +150,22 @@ class VectorStore:
             return False
 
     def _try_persistent(self) -> bool:
-        """尝试本地持久化模式
-        
-        显式注入 DefaultEmbeddingFunction，避免 Chroma 隐式加载
-        embedding 函数时因缺少 onnxruntime 而静默失败。
+        """尝试本地持久化模式。
+
+        库内向量由 text2vec-base-chinese 重建（768 维）。不得回退 Chroma
+        默认 MiniLM（384 维），否则查询空间与库不一致。
+        不传 embedding_function：collection 持久化配置是 legacy default，
+        chroma 1.5.9 再传新函数会报 conflict。查询/写入均手动传向量。
         """
         try:
             import chromadb
-            from chromadb.utils import embedding_functions
 
-            # 显式加载 embedding 函数，尽早发现依赖缺失
             try:
-                embedding_fn = embedding_functions.DefaultEmbeddingFunction()
+                _get_embed_fn()(["连接测试"])  # 预热，尽早发现模型加载问题
+                logger.info("使用 ST embedding: %s", EMBED_MODEL)
             except Exception as e:
-                logger.error("默认 Embedding 函数加载失败: %s", e)
-                logger.error("请确保已安装 onnxruntime: pip install onnxruntime")
+                logger.error("text2vec embedding 不可用: %s", e)
+                logger.error("请安装 sentence-transformers，并设置 HF_ENDPOINT=https://hf-mirror.com")
                 self._client = None
                 self._collection = None
                 self._mode = "unavailable"
@@ -105,7 +175,6 @@ class VectorStore:
             self._client = chromadb.PersistentClient(path=config.CHROMA_PERSIST_DIR)
             self._collection = self._client.get_or_create_collection(
                 name=self.collection_name,
-                embedding_function=embedding_fn,
                 metadata={"description": "szpeter2026 知识库向量存储 (persistent)"},
             )
             self._mode = "persistent"
@@ -138,25 +207,46 @@ class VectorStore:
                 **(chunk.get("metadata", {})),
             })
 
+        # 手动计算 embedding：sentence-transformers（text2vec，STEmbeddingFunction
+        # 内部按 EMBED_MAX_CHARS 截断，与重建索引一致）；失败条目逐条降级为零向量
+        # （不参与命中），避免整个文档因单条 chunk 失败而被跳过。
+        fn = _get_embed_fn()
+        try:
+            embeddings = fn(documents)
+        except Exception as e:
+            logger.warning("批量 embedding 失败(%s)，逐条降级", e)
+            embeddings = []
+            for d in documents:
+                try:
+                    embeddings.append(fn([d])[0])
+                except Exception:
+                    logger.warning("单条 embedding 失败，置零向量")
+                    embeddings.append([0.0] * EMBED_DIM)
+
         # 分批插入（Chroma 有限制）
         batch_size = 100
         for i in range(0, len(ids), batch_size):
-            self._collection.add(
+            add_kwargs = dict(
                 ids=ids[i:i + batch_size],
                 documents=documents[i:i + batch_size],
                 metadatas=metadatas[i:i + batch_size],
             )
+            if embeddings is not None:
+                add_kwargs["embeddings"] = embeddings[i:i + batch_size]
+            self._collection.add(**add_kwargs)
 
         return len(ids)
 
     def search(self, query: str, top_k: int = 5,
-               threshold: float = 0.5) -> list[dict]:
+               threshold: float = 0.7) -> list[dict]:
         """语义搜索"""
         if not self.is_available:
             return []
 
+        # 手动嵌入查询（collection 无 embedding_function，见 _try_persistent）
+        query_emb = _get_embed_fn()([query])[0]
         results = self._collection.query(
-            query_texts=[query],
+            query_embeddings=[query_emb],
             n_results=top_k,
         )
 
@@ -210,8 +300,9 @@ class VectorStore:
         # 如果有向量数据，执行测试查询验证 embedding 函数可用
         if result["total_vectors"] > 0:
             try:
+                test_emb = _get_embed_fn()(["健康检查测试"])[0]
                 test_result = self._collection.query(
-                    query_texts=["健康检查测试"],
+                    query_embeddings=[test_emb],
                     n_results=1,
                 )
                 has_ids = bool(test_result.get("ids") and test_result["ids"][0])

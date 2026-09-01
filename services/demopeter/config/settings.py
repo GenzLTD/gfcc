@@ -12,6 +12,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # 加载 .env
 load_dotenv(PROJECT_ROOT / ".env", override=False)
 
+# Chroma 查询嵌入走 HuggingFace sentence-transformers（text2vec-base-chinese）。
+# 未设镜像时，启动会卡在 HF 网络请求；可用 HF_ENDPOINT 覆盖。
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
 
 class Config:
     """全局配置"""
@@ -59,7 +63,7 @@ class Config:
     PGVECTOR_DATABASE: str = os.getenv("PGVECTOR_DATABASE", "szpeter2026")
     PGVECTOR_EMBEDDING_DIM: int = int(os.getenv("PGVECTOR_EMBEDDING_DIM", "768"))
 
-    # ===== Ollama Embedding 模型 =====
+    # ===== Ollama Embedding 模型（仅 pgvector 路径；Chroma 走 text2vec，见 vector_store.py）=====
     OLLAMA_EMBEDDING_MODEL: str = os.getenv("OLLAMA_EMBEDDING_MODEL", "nomic-embed-text:latest")
 
     # ===== Web 配置 =====

@@ -52,14 +52,14 @@ def kb_stats() -> str:
 
 
 @mcp.tool()
-def kb_search(query: str, top_k: int = 5, threshold: float = 0.5) -> str:
+def kb_search(query: str, top_k: int = 5, threshold: float = 0.7) -> str:
     """Semantic + keyword hybrid search without calling the LLM."""
     result = _rag.search_only(query, top_k=top_k, threshold=threshold)
     return json.dumps(result, ensure_ascii=False, indent=2)
 
 
 @mcp.tool()
-def kb_ask(query: str, top_k: int = 5, threshold: float = 0.5) -> str:
+def kb_ask(query: str, top_k: int = 5, threshold: float = 0.7) -> str:
     """Full RAG query: retrieve context then generate an answer via configured AI."""
     result = _rag.query(query, top_k=top_k, threshold=threshold)
     payload = {

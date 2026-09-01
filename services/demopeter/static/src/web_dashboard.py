@@ -425,7 +425,7 @@ def api_rag_query():
         return jsonify({"error": "请输入问题"}), 400
 
     top_k = data.get("top_k", 5)
-    threshold = data.get("threshold", 0.5)
+    threshold = data.get("threshold", 0.7)
 
     try:
         result = rag.query(query_text, top_k=top_k, threshold=threshold)
@@ -455,7 +455,7 @@ def api_rag_stream():
         return jsonify({"error": "请输入问题"}), 400
 
     top_k = request.args.get("top_k", 5, type=int)
-    threshold = request.args.get("threshold", 0.5, type=float)
+    threshold = request.args.get("threshold", 0.7, type=float)
 
     def generate():
         try:
