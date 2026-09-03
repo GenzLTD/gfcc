@@ -3,6 +3,16 @@ name: Deploy
 # 触发方式：
 #   1. 手动：Actions → Deploy → Run workflow
 #   2. 打 tag：git tag v1.0.0 && git push origin v1.0.0
+#
+# 目标机: 天翼云 14.29.216.219 · /data/gfcc（git 树，origin=github GenzLTD/gfcc）
+# gfcc-kernel 由 systemd（gfcc-kernel.service）托管 uvicorn :5211，
+# 非 docker compose —— 部署 = git checkout <SHA> + systemctl restart gfcc-kernel。
+#
+# GitHub Secrets（必填）:
+#   DEPLOY_HOST     - 14.29.216.219
+#   DEPLOY_USER     - root
+#   DEPLOY_SSH_KEY  - root SSH 私钥全文（天翼可直接访问 github GenzLTD/gfcc）
+#   DEPLOY_PORT     - 22（可选）
 on:
   workflow_dispatch:
   push:
@@ -14,17 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Upload compose stack to server
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          source: "docker-compose.yml,services/ethos,services/tenet,services/tatha,services/demopeter,services/agentmemory,deploy/*"
-          target: "/opt/gfcc"
-
-      - name: Pull images and start stack
+      - name: Deploy to /data/gfcc and restart gfcc-kernel
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -32,12 +32,19 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_PORT || 22 }}
           script: |
-            set -e
-            cd /opt/gfcc
-            if [ ! -f .env ]; then cp .env.example .env; fi
-            # 如需远端构建（不预推送镜像）：去掉下行注释
-            # docker compose up -d --build --remove-orphans
-            docker compose pull || true
-            docker compose up -d --remove-orphans
-            docker compose ps
-            curl -sf http://localhost:5210/v1/region || echo "WARN: tatha not ready yet"
+            set -euo pipefail
+            cd /data/gfcc
+            export GIT_SHA="${{ github.sha }}"
+            git fetch origin main
+            git checkout --force "${GIT_SHA}"
+            echo "=== checked out $(git rev-parse HEAD) ==="
+            systemctl restart gfcc-kernel
+            for i in $(seq 1 20); do
+              if curl -sf http://127.0.0.1:5211/health >/dev/null 2>&1; then
+                echo "gfcc-kernel healthy after ${i}s"
+                break
+              fi
+              sleep 2
+            done
+            curl -sf http://127.0.0.1:5211/health || { journalctl -u gfcc-kernel -n 40 --no-pager; exit 1; }
+            echo "=== deploy OK ==="
