@@ -24,6 +24,7 @@ import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import time
 from pathlib import Path
@@ -35,6 +36,9 @@ from ethos.models import Tier as EthosTier
 from ethos.security import Decision, init_security
 
 from .auth import AuthContext, Tier
+
+logger = logging.getLogger("tatha.security")
+
 
 def _default_audit_path() -> str:
     """审计库默认位置：跟随 Tatha（logs/audit.db），ETHOS_AUDIT_DB 可覆盖。"""
@@ -175,10 +179,17 @@ class SecurityService:
         """
         ethos 认证入口：仅 HMAC 模式接管（严格验签标准 JWT，失败返回 None）。
         未配置 ETHOS_AUTH_SECRET 时返回 None，由上层回落现有 stub/远程链。
+
+        任何非法输入（非三段式 / 无法解码 / ethos 内部异常）一律返回 None（→ 401），
+        不让异常冒泡成 500 —— 认证路径上异常必须 fail-closed，而非暴露服务端错误。
         """
         if not self.hmac_enabled:
             return None
-        ctx = self._sec.verify(token)
+        try:
+            ctx = self._sec.verify(token)
+        except Exception:
+            logger.warning("令牌格式非法或验签异常，拒绝请求（fail-closed，不抛 500）")
+            return None
         # deny by default：验签通过但 uid 为空（无 sub/user_id/uid）→ 视为匿名，拒绝。
         # ethos 验签对缺失 uid 宽容（Claims 键兼容），但 Tatha 业务必须持有真实身份。
         if not ctx.ok or ctx.principal is None or not ctx.principal.user_id:
