@@ -372,7 +372,11 @@ def dispatch(intent: str, request: AskRequest, slots: dict[str, Any] | None = No
             try:
                 analyzer = MBTITextAnalyzer()
                 analysis = analyzer.analyze_text(text)
-                if analysis.get("mbti_type") and analysis["mbti_type"] != "XXXX":
+                # 旧实现此处判断 mbti_type != "XXXX"，但 XXXX 只在正文 < 20 字时出现，
+                # 而该路径已被外层 MIN_TEXT_LENGTH 拦截 → 守卫恒为真（死代码），
+                # 导致「零关键词」文本也被当作分析完成并给出职业建议。
+                # 现改为按 analyzer 显式返回的 status 分流：
+                if analysis.get("status") == "ok":
                     career = get_career_match(analysis["mbti_type"])
                     extracted = {**analysis, "career_match": career}
                     return {
@@ -381,9 +385,21 @@ def dispatch(intent: str, request: AskRequest, slots: dict[str, Any] | None = No
                         "extracted": extracted,
                         "slots": slots,
                     }
+                if analysis.get("status") == "partial":
+                    pending_axes = "、".join(analysis.get("undetermined_axes") or [])
+                    return {
+                        "message": "已识别部分性格维度，尚不足以给出确定类型",
+                        "status": "pending",
+                        "hint": f"以下维度信号不足：{pending_axes}。"
+                        "请补充描述您的做事风格、决策方式或社交偏好，以获得完整类型与职业建议",
+                        "extracted": analysis,
+                        "slots": slots,
+                    }
                 return {
-                    "message": "已分析性格维度，建议补充更多描述以获得更稳定类型",
-                    "status": "ok",
+                    "message": "描述中未检测到可用于判断性格类型的信号",
+                    "status": "pending",
+                    "hint": "请用更具体的说法描述自己（如「我习惯先做计划再动手」「我喜欢独立思考」"
+                    "「我做事看重逻辑」），至少 20 字，我再为您分析",
                     "extracted": analysis,
                     "slots": slots,
                 }
