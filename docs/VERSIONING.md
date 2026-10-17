@@ -1,7 +1,7 @@
 # 契约版本策略
 
 > 契约是权威，就必须回答权威怎么变。价值层 [`docs/vision.md`](vision.md) 约束本文件。  
-> **现状锚点（2026-08-30）**：Ask / 五端口 **1.2.0**（兼容新增：consensus `rejected`/`withdrawn` + `reject`/`withdraw`/`expire` 操作）；信号家族仍冻在 **1.0.0**。管道层 + 拓扑层（P3 归档）已过；**围坐 MVP 未开**（人未齐，见 [`MVP_资源配置清单.md`](MVP_资源配置清单.md)）。本页管契约怎么变，**不管**招人、会场 UI、进程内存实现。
+> **现状锚点（2026-10-17）**：Ask / 五端口 **1.3.0**（兼容新增：过渡校验者 `zervi-auth`、模式 `gfcc.terminal`、store 适配器 `cortex-mcp` 与 pgvector 库 `gfcc`）。1.2.0 的 consensus `rejected`/`withdrawn` 仍在。信号家族仍冻在 **1.0.0**。管道层 + 拓扑层（P3 归档）已过；**围坐 MVP 未开**（人未齐，见 [`MVP_资源配置清单.md`](MVP_资源配置清单.md)）。本页管契约怎么变，**不管**招人、会场 UI、进程内存实现。
 
 ## Semver（`contracts/*.json` 的 `version`）
 
@@ -11,7 +11,7 @@
 | 兼容新增 | **次版本** | 加字段、加端口、加 `status=partial`、新 `signal_type`（旧 payload 只追加、不改语义） |
 | 文案/示例 | **修订号** | 注释、zh 标签 |
 
-当前线：Ask / 五端口 **1.2.0**（`ask.envelope` + `circle` / `identity` / `memory` / `consensus` / `contribution` + `roles` + `registry`）。信号线（`signal.envelope` + `contracts/signals/`）**1.0.0**，与 1.2.0 分家族，互不要求同号。种子期 `signal_type` 仅 `personality_beacon`、`consensus_match`。
+当前线：Ask / 五端口 **1.3.0**（`ask.envelope` + `circle` / `identity` / `memory` / `consensus` / `contribution` + `roles` + `registry`）。信号线（`signal.envelope` + `contracts/signals/`）**1.0.0**，与 1.3.0 分家族，互不要求同号。种子期 `signal_type` 仅 `personality_beacon`、`consensus_match`。
 
 ## 变更流程
 

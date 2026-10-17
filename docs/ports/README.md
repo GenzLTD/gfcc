@@ -24,7 +24,8 @@
 - **单入口**：`POST /v1/ask`。用户只交需求；解析与分发是内部事。信封见 `contracts/ask.envelope.v1.json`。
 - **信号入口**（并列，不是 Ask 的替代）：`POST /v1/signal-ingest`。机机事件；HMAC 验签；不占成员配额、不经 llm 槽。信封见 `contracts/signal.envelope.v1.json`（v1.0.0）；payload 见 `contracts/signals/`。种子期两种：`consensus_match` → consensus，`personality_beacon` → identity。
 - **信封稳定**：`AskRequest { message, context }` → `AskResponse { port, status, result, suggestions }`。`status` 含 `partial`（半成功：已成功子操作不回滚，未成功可重试）。`intent` 仅作弃用别名，映射到 `port`。`dialog_mode`：`collaboration`（协作）或 `coach`（教练）。
-- **ethos 纯验证者**：验签 / 鉴权 / 配额 / 审计，**不签发**。`sub` 是唯一 uid 桥梁。未认证、uid 空、scope 未列、配额后端不可达 → 拒绝（401 / 403 / 429）。档位 `free/basic/pro/admin` 只管配额，不替代身份。
+- **校验者**：`sub` 是唯一 uid。没有 `sub` → 401。ethos 仍是长期校验者（验签 / 鉴权 / 配额 / 审计，**不签发**）。1.3.0 增加过渡校验者 `zervi-auth`，认 `{sub, role, name, phone}`，`role` 是市场角色，本版不改为 `roles[]`。未认证、uid 空、scope 未列、配额后端不可达 → 拒绝（401 / 403 / 429）。档位 `free/basic/pro/admin` 只管配额，不替代身份。
+- **模式**：`gfcc.default` 仍是五端口（可 stub）。`gfcc.terminal` 必选只有 identity 与 memory。`memory.recall` 最低角色仍是 observer；`memory.remember` 仍要 participant。
 - **八角梯**（JWT `roles` + `permissions`，**不是**八个微服务）：旁观 → 参与 → 尝试 → 提议 → 主理 → 组织 → 行动 → 提案。每级「新增的责任」见 `roles.v1.json` `ladder_logic`。升降应有 Dual / CoCo 证据；AI 观察只作辅助；管理员开关只作运维例外。
 - **营造师**（与八角梯正交）：协作推进 / 赋能项目 / 在地连接 / 持续运营。角色管「能不能」，营造师管「擅长做什么」。
 - **五槽**：`llm | tools | session | policy | store`。`llm` 是生成器，不是洞察层。洞察走 `memory.observe`（可 `observed_by: ai`）与共识 `score_evidence`。`tools ≠ 某家 RAG`；`store ≠ 某家记忆引擎`。
@@ -39,7 +40,7 @@
 | **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据。1.2.0 加 `reject`/`withdraw`/`expire`（作废当前句，不改全员 ack） | 不是求职匹配；失败不得自动成功；确认必须是人 |
 | **contribution** | `contribution.v1.json` | CoCo：认定 → 兑现 → 可申诉；兑现后可回写轨迹 | 不是积分主叙事；v1 不依赖链 |
 
-默认 `tools` 清单 = 上表五端口。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。
+默认 `tools` 清单 = 上表五端口。`gfcc.terminal` 的清单只有 identity 与 memory。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。`ctx.store` 的可选适配器含 `cortex-mcp`（终端侧）与 `gfcc`（pgvector 库），两者只通过 `actor_sub` 关联；启动时为空。
 
 ## 3. 可选组合（可卸载）
 

@@ -1,0 +1,15 @@
+# 终端模式 = 内核 + identity + memory。
+# gfcc.default 不因本模式改变。circle / consensus / contribution 不在必选。
+# 校验者用过渡的 zervi-auth：claims 为 {sub, role, name, phone}，role 是市场角色。
+# memory.recall 最低角色仍是 observer；memory.remember 仍要 participant。
+id: gfcc.terminal
+slots:
+  llm: providers/default
+  policy: zervi-auth
+  session: community
+  store: cortex-mcp
+  store_alternatives:
+    - gfcc
+  tools:
+    - identity
+    - memory
