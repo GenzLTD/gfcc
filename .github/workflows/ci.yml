@@ -66,14 +66,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Compute lowercase image repo
+        run: echo "IMAGE_REPO=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
       - name: Build and push images
         run: |
           set -e
+          # GHCR 仓库名必须全小写；GITHUB_REPOSITORY 保留 owner 原始大小写（GenzLTD），必须先转小写
           for img in tatha demopeter; do
-            docker build -f services/${img}/Dockerfile -t ghcr.io/${{ github.repository }}/${img}:latest .
-            docker push ghcr.io/${{ github.repository }}/${img}:latest
+            docker build -f services/${img}/Dockerfile -t ${IMAGE_REPO}/${img}:latest .
+            docker push ${IMAGE_REPO}/${img}:latest
           done
-          docker build -f services/agentmemory/Dockerfile.gateway -t ghcr.io/${{ github.repository }}/am-gateway:latest .
-          docker push ghcr.io/${{ github.repository }}/am-gateway:latest
-          docker build -f services/agentmemory/Dockerfile.bridge -t ghcr.io/${{ github.repository }}/am-bridge:latest .
-          docker push ghcr.io/${{ github.repository }}/am-bridge:latest
+          docker build -f services/agentmemory/Dockerfile.gateway -t ${IMAGE_REPO}/am-gateway:latest .
+          docker push ${IMAGE_REPO}/am-gateway:latest
+          docker build -f services/agentmemory/Dockerfile.bridge -t ${IMAGE_REPO}/am-bridge:latest .
+          docker push ${IMAGE_REPO}/am-bridge:latest
