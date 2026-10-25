@@ -2,7 +2,7 @@
 
 本目录是 **L0 真源** 的 JSON。人读先看 [`docs/vision.md`](../docs/vision.md)，再看 [`docs/ports/README.md`](../docs/ports/README.md)。版本规则见 [`docs/VERSIONING.md`](../docs/VERSIONING.md)。
 
-当前契约版本：**1.3.0**（一等端口 / Ask 信封；过渡校验者 `zervi-auth`、模式 `gfcc.terminal`、store 适配器 `cortex-mcp` 与 `gfcc`）· 信号线 **1.0.0**（与 1.3.0 分家族，互不影响）
+当前契约版本：**1.4.0**（一等端口 / Ask 信封；1.3.0 的过渡校验者、终端模式、store 适配器仍在；身份增加只由人类选择写入的 `value_axes`）· 信号线 **1.1.0**（与 1.4.0 分家族，互不影响；新增 `value_axis_choice`）
 
 | 文件 | 端口 / 层 |
 |---|---|
@@ -10,6 +10,7 @@
 | `signal.envelope.v1.json` | 机机信号信封（`POST /v1/signal-ingest`，与 Ask 并列） |
 | `signals/consensus_match.v1.json` | DemoPPI 匹配事实 → consensus |
 | `signals/personality_beacon.v1.json` | PlanetX 测评事实 → identity |
+| `signals/value_axis_choice.v1.json` | PlanetX 叙事选择 → identity.value_axes |
 | `circle.v1.json` | 围坐容器 |
 | `identity.v1.json` | PPI 身份 + 营造师 |
 | `memory.v1.json` | Dual 七库（含方法论价值、AI 观察） |

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from tatha.core.config import get_default_model
 from tatha.jobs.schemas import JobMatchScore
+from tatha.jobs.value_axes import format_value_axes_prior
 
 
 def _model():
@@ -40,15 +41,23 @@ def _job_match_agent():
 _agent = None
 
 
-def score_resume_vs_job(resume_text: str, job_description: str) -> JobMatchScore:
+def score_resume_vs_job(
+    resume_text: str,
+    job_description: str,
+    value_axes: dict | None = None,
+) -> JobMatchScore:
     """
-    对单条职位做简历匹配打分。
+    对单条职位做简历匹配打分。返回值只描述这一份职位，调用方不得把它写回 value_axes。
     若 LLM 调用失败，返回 overall=0 的默认分。
     """
+    prior = format_value_axes_prior(value_axes)
     global _agent
     if _agent is None:
         _agent = _job_match_agent()
-    user_message = f"【简历】\n{resume_text[:8000]}\n\n【职位描述】\n{(job_description or '')[:4000]}"
+    user_message = (
+        f"{prior}【简历】\n{resume_text[:8000]}\n\n"
+        f"【职位描述】\n{(job_description or '')[:4000]}"
+    )
     try:
         result = _agent.run_sync(user_message)
         return result.output

@@ -17,10 +17,13 @@ def run_job_match_pipeline(
     resume_text: str,
     top_n: int | None = None,
     source_id: str | None = None,
+    value_axes: dict | None = None,
 ) -> tuple[list[MatchResult], int]:
     """
     执行一次职位匹配：用指定职位源拉职位，对每条职位做简历 vs 职位描述打分，按 overall 排序后返回前 top_n 条。
     返回 (匹配列表, 参与打分的职位数)。resume_text 为空时返回 ([], 0)；top_n / source_id 不传则用配置。
+    value_axes 只读：有则按钱多/事少/离家近解释三项，打分结果不得写回该对象。
+    value_axes 只读：有则按钱多/事少/离家近解释三项，打分结果不得写回该对象。
     """
     resume_text = (resume_text or "").strip()
     if not resume_text:
@@ -38,7 +41,7 @@ def run_job_match_pipeline(
         jd = (job.description or f"{job.title} @ {job.company}").strip()
         if job.location:
             jd = f"工作地点：{job.location}\n\n{jd}"
-        score = score_resume_vs_job(resume_text, jd)
+        score = score_resume_vs_job(resume_text, jd, value_axes=value_axes)
         results.append(MatchResult(job=job, score=score))
 
     results.sort(key=lambda r: r.score.overall, reverse=True)

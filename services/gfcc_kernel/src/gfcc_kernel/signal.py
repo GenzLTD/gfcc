@@ -7,7 +7,8 @@
 - 签名：HMAC-SHA256(SIGNAL_INGEST_SECRET, raw_body)，header `X-Signature`，hex 小写。
 - 幂等键：(signal_type, user_id_hash, nonce)，数据库 UNIQUE。
 - 信封严格：additionalProperties=false；缺/多余字段一律 422。
-- 路由：consensus_match → consensus；personality_beacon → identity。
+- 路由：consensus_match → consensus；personality_beacon → identity；
+  value_axis_choice → identity。
 
 红线：信号必须源自用户真实动作（确认匹配、完成测评），payload 只传 hash 与
 类型化结果，不传明文 email / 原始答题 / 对端身份信息。
@@ -23,7 +24,7 @@ from typing import Any, Dict, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-SIGNAL_TYPE = Literal["consensus_match", "personality_beacon"]
+SIGNAL_TYPE = Literal["consensus_match", "personality_beacon", "value_axis_choice"]
 
 MBTI_TYPES = {
     "INTJ", "INTP", "ENTJ", "ENTP",
@@ -56,20 +57,25 @@ def email_to_user_id_hash(email: str) -> str:
 SIGNAL_ROUTE = {
     "consensus_match": "consensus",
     "personality_beacon": "identity",
+    "value_axis_choice": "identity",
 }
 
 # 各信号 payload 的 source 固定值（用于追溯产生方）
 SIGNAL_SOURCE = {
     "consensus_match": "demoppi",
     "personality_beacon": "planetx",
+    "value_axis_choice": "planetx",
 }
+
+VALUE_AXES = {"survival", "freedom", "belonging"}
+NAVIGATOR_DOMAINS = {"职业域", "身份域", "诗域", "信任域", "自我域", "迷雾域"}
 
 
 class SignalEnvelope(BaseModel):
     """signal.envelope.v1 请求体：additionalProperties=false（契约强制拒绝多余字段）。
 
     字段（见方案 §2.2）：
-    - signal_type: consensus_match | personality_beacon（enum）
+    - signal_type: consensus_match | personality_beacon | value_axis_choice（enum）
     - user_id_hash: sha256(email.lower().trim())，64 位小写 hex
     - nonce: 幂等键成分，uuid4 hex（min 8）
     - timestamp: 可选，仅审计用途
@@ -97,7 +103,7 @@ def verify_signature(secret: str, raw_body: bytes, header_signature: str) -> boo
     return hmac.compare_digest(expected, header_signature.strip().lower())
 
 
-# 冻结 Schema（contracts/signals/*.v1.json，G1 v1.0.0）允许的 payload 键
+# contracts/signals/*.v1.json 允许的 payload 键。信号线 1.1.0。
 _PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "consensus_match": {
         "allowed": {"match_score", "shared_tags", "peer_id_hash", "source", "generated_at"},
@@ -106,6 +112,10 @@ _PAYLOAD_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "personality_beacon": {
         "allowed": {"personality_type", "traits", "assessment_score", "source", "generated_at"},
         "required": {"personality_type", "source"},
+    },
+    "value_axis_choice": {
+        "allowed": {"axis", "imprint_name", "domain", "points", "source", "generated_at"},
+        "required": {"axis", "imprint_name", "domain", "points", "source"},
     },
 }
 
@@ -122,6 +132,7 @@ def validate_payload(signal_type: str, payload: Dict[str, Any]) -> None:
     - required 缺一即报错
     - consensus_match：match_score∈[0,1]、shared_tags 1..10 非空串、peer_id_hash 64 hex、source=demoppi
     - personality_beacon：personality_type∈MBTI 16、traits[{name,score}] 严格、assessment_score number、source=planetx
+    - value_axis_choice：axis∈三轴、domain∈导航六域、points∈1..5 整数、imprint_name 非空、source=planetx
     """
     schema = _PAYLOAD_SCHEMAS[signal_type]
     extra = set(payload) - schema["allowed"]
@@ -165,6 +176,23 @@ def validate_payload(signal_type: str, payload: Dict[str, Any]) -> None:
         assessment = payload.get("assessment_score")
         if assessment is not None and not _is_number(assessment):
             raise PayloadError("assessment_score must be number")
+    elif signal_type == "value_axis_choice":
+        axis = payload["axis"]
+        if axis not in VALUE_AXES:
+            raise PayloadError("axis must be survival, freedom, or belonging")
+        name = payload["imprint_name"]
+        if not isinstance(name, str) or not name.strip():
+            raise PayloadError("imprint_name must be a non-empty string")
+        if payload["domain"] not in NAVIGATOR_DOMAINS:
+            raise PayloadError("domain must be one of the navigator six")
+        points = payload["points"]
+        if isinstance(points, bool) or not isinstance(points, int) or not 1 <= points <= 5:
+            raise PayloadError("points must be an integer within 1..5")
+        if payload["source"] != "planetx":
+            raise PayloadError("source must be 'planetx'")
+        generated = payload.get("generated_at")
+        if generated is not None and not isinstance(generated, str):
+            raise PayloadError("generated_at must be a string")
     else:  # 不可达（信封 enum 已挡），防御性兜底
         raise PayloadError(f"unsupported signal_type: {signal_type}")
 

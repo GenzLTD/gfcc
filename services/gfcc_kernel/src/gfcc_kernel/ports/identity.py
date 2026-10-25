@@ -4,7 +4,8 @@
 - profile: sub / display_name / values / builder_tags / capability_trace / commitments / role。
 - trace_sources 白名单：contribution|memory|consensus|circle → evidence；job_match|mbti|ai_observed → auxiliary；未列来源一律拒绝。
 - 只能 system 通过 append_trace mint evidence；identity 不得自证能力（upsert_profile 不能加 evidence trace）。
-- operations: get_profile / upsert_profile / append_trace。
+- operations: get_profile / upsert_profile / append_trace / apply_value_axis。
+- value_axes 只由 value_axis_choice 累加；职位分不得写入。
 """
 
 from __future__ import annotations
@@ -47,6 +48,7 @@ class IdentityAdapter:
         self._lock = threading.Lock()
         self._profiles: Dict[str, Dict[str, Any]] = {}
         self._signal_beacons: List[Dict[str, Any]] = []
+        self._value_axis_choices: List[Dict[str, Any]] = []
 
     def _ensure(self, sub: str) -> Dict[str, Any]:
         if sub not in self._profiles:
@@ -155,12 +157,21 @@ class IdentityAdapter:
     # 信号摄入（Step3 W3）：personality_beacon → 画像 auxiliary trace
     # ------------------------------------------------------------------ #
 
-    def ingest_signal(self, signal_id: str, user_id_hash: str, payload: Dict[str, Any]) -> PortOpResult:
-        """接收 personality_beacon 信号：mint MBTI auxiliary trace + 记录调用。
+    def ingest_signal(
+        self,
+        signal_id: str,
+        user_id_hash: str,
+        payload: Dict[str, Any],
+        signal_type: Optional[str] = None,
+    ) -> PortOpResult:
+        """接收发往 identity 的信号。
 
-        sub 即信封 user_id_hash（email sha256），与画像 sub 同构；source_port=mbti
-        属 AUXILIARY_SOURCES 白名单，只做 auxiliary 不做 evidence（画像不自证能力）。
+        personality_beacon：mint MBTI auxiliary trace。
+        value_axis_choice：只累加 value_axes，不写 capability_trace，也不改 values。
+        轴取 payload.axis，不按域名默认轴改写。
         """
+        if signal_type == "value_axis_choice":
+            return self._ingest_value_axis(signal_id, user_id_hash, payload)
         ptype = (payload.get("personality_type") or "").upper()
         trace = self.append_trace(
             sub=user_id_hash,
@@ -182,6 +193,43 @@ class IdentityAdapter:
     def list_signal_beacons(self) -> List[Dict[str, Any]]:
         with self._lock:
             return [dict(b) for b in self._signal_beacons]
+
+    def _ingest_value_axis(self, signal_id: str, user_id_hash: str, payload: Dict[str, Any]) -> PortOpResult:
+        """把人选的 1–5 点加到指定轴。职位分卡字段出现时拒绝。"""
+        axis = payload.get("axis")
+        points = payload.get("points")
+        if axis not in ("survival", "freedom", "belonging"):
+            return PortOpResult(ok=False, error="axis must be survival, freedom, or belonging")
+        if isinstance(points, bool) or not isinstance(points, int) or not 1 <= points <= 5:
+            return PortOpResult(ok=False, error="points must be an integer within 1..5")
+        leaked = set(payload) & {
+            "salary_match", "location_match", "culture_workload_match", "overall",
+        }
+        if leaked:
+            return PortOpResult(ok=False, error="job-match scores must not be written onto value_axes")
+        with self._lock:
+            profile = self._ensure(user_id_hash)
+            axes = profile.get("value_axes")
+            if not isinstance(axes, dict):
+                axes = {"survival": 0, "freedom": 0, "belonging": 0}
+                profile["value_axes"] = axes
+            axes[axis] = int(axes.get(axis, 0)) + points
+            receipt = {
+                "signal_id": signal_id,
+                "user_id_hash": user_id_hash,
+                "axis": axis,
+                "points": points,
+                "domain": payload.get("domain"),
+                "imprint_name": payload.get("imprint_name"),
+                "received_at": _now(),
+            }
+            self._value_axis_choices.append(receipt)
+            snapshot = dict(axes)
+        return PortOpResult(ok=True, id=signal_id, data={"value_axes": snapshot})
+
+    def list_value_axis_choices(self) -> List[Dict[str, Any]]:
+        with self._lock:
+            return [dict(c) for c in self._value_axis_choices]
 
     # ------------------------------------------------------------------ #
     # 查询辅助

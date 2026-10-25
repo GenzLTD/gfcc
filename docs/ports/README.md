@@ -22,7 +22,7 @@
 ## 1. 内核（默认常开）
 
 - **单入口**：`POST /v1/ask`。用户只交需求；解析与分发是内部事。信封见 `contracts/ask.envelope.v1.json`。
-- **信号入口**（并列，不是 Ask 的替代）：`POST /v1/signal-ingest`。机机事件；HMAC 验签；不占成员配额、不经 llm 槽。信封见 `contracts/signal.envelope.v1.json`（v1.0.0）；payload 见 `contracts/signals/`。种子期两种：`consensus_match` → consensus，`personality_beacon` → identity。
+- **信号入口**（并列，不是 Ask 的替代）：`POST /v1/signal-ingest`。机机事件；HMAC 验签；不占成员配额、不经 llm 槽。信封见 `contracts/signal.envelope.v1.json`（v1.1.0）；payload 见 `contracts/signals/`。三种：`consensus_match` → consensus，`personality_beacon` → identity，`value_axis_choice` → identity.value_axes。第三种只携带人选的轴和 1–5 点，不携带职位匹配分。
 - **信封稳定**：`AskRequest { message, context }` → `AskResponse { port, status, result, suggestions }`。`status` 含 `partial`（半成功：已成功子操作不回滚，未成功可重试）。`intent` 仅作弃用别名，映射到 `port`。`dialog_mode`：`collaboration`（协作）或 `coach`（教练）。
 - **校验者**：`sub` 是唯一 uid。没有 `sub` → 401。ethos 仍是长期校验者（验签 / 鉴权 / 配额 / 审计，**不签发**）。1.3.0 增加过渡校验者 `zervi-auth`，认 `{sub, role, name, phone}`，`role` 是市场角色，本版不改为 `roles[]`。未认证、uid 空、scope 未列、配额后端不可达 → 拒绝（401 / 403 / 429）。档位 `free/basic/pro/admin` 只管配额，不替代身份。
 - **模式**：`gfcc.default` 仍是五端口（可 stub）。`gfcc.terminal` 必选只有 identity 与 memory。`memory.recall` 最低角色仍是 observer；`memory.remember` 仍要 participant。
@@ -35,12 +35,12 @@
 | 端口 | 契约 | 语义 | 明确不是 |
 |---|---|---|---|
 | **circle** | `circle.v1.json` | 围坐容器：创建 / 加入 / 解散；记忆与共识的归属 | 不是隐式字符串；解散不删历史 |
-| **identity** | `identity.v1.json` | PPI：价值观、能力轨迹、承诺、营造师标签；`sub` 绑档案 | 不是付费档；证据源白名单，无 `optional` |
+| **identity** | `identity.v1.json` | PPI：价值观、能力轨迹、承诺、营造师标签；`sub` 绑档案。1.4.0 起可选 `value_axes`（生存/自由/归属），只由 `value_axis_choice` 累加 | 不是付费档；不是职位分卡；证据源白名单，无 `optional` |
 | **memory** | `memory.v1.json` | Dual 七库：**议题 / 行动 / 事件 / 方法论价值 / 人 / 组织 / 资源**；人与 AI 均可观察 | 不是个人备忘；AI 观察不得静默改写 |
 | **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据。1.2.0 加 `reject`/`withdraw`/`expire`（作废当前句，不改全员 ack） | 不是求职匹配；失败不得自动成功；确认必须是人 |
 | **contribution** | `contribution.v1.json` | CoCo：认定 → 兑现 → 可申诉；兑现后可回写轨迹 | 不是积分主叙事；v1 不依赖链 |
 
-默认 `tools` 清单 = 上表五端口。`gfcc.terminal` 的清单只有 identity 与 memory。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。`ctx.store` 的可选适配器含 `cortex-mcp`（终端侧）与 `gfcc`（pgvector 库），两者只通过 `actor_sub` 关联；启动时为空。
+默认 `tools` 清单 = 上表五端口。`gfcc.terminal` 的清单只有 identity 与 memory。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。`job_match` 仍是可选画像：画像上已有 `value_axes` 时必须读取，并用薪资、强度、地点三项去解释钱多、事少、离家近；模型打出的分留在这一份职位上，禁止写回 `value_axes` 或 `values`。`ctx.store` 的可选适配器含 `cortex-mcp`（终端侧）与 `gfcc`（pgvector 库），两者只通过 `actor_sub` 关联；启动时为空。
 
 ## 3. 可选组合（可卸载）
 

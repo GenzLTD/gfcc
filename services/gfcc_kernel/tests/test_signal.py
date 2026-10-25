@@ -212,6 +212,50 @@ class TestV1SignalIngest:
         profile = identity.get_profile(HASH_B).data["profile"]
         assert any(t["label"] == "personality_beacon:ENTP" for t in profile["capability_trace"])
 
+    def test_value_axis_choice_uses_option_axis(self, monkeypatch):
+        """职业域选「拒绝」记 freedom，不按域名收成 survival，也不写能力轨迹。"""
+        monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
+        identity = app_module._registry.get("identity")
+        user = email_to_user_id_hash("career-reject@example.com")
+        body = {
+            "signal_type": "value_axis_choice",
+            "user_id_hash": user,
+            "nonce": "ax" * 8,
+            "payload": {
+                "axis": "freedom",
+                "imprint_name": "尊严",
+                "domain": "职业域",
+                "points": 3,
+                "source": "planetx",
+            },
+        }
+        r = _post(body)
+        assert r.status_code == 200
+        assert r.json()["port"] == "identity"
+        profile = identity.get_profile(user).data["profile"]
+        assert profile["value_axes"] == {"survival": 0, "freedom": 3, "belonging": 0}
+        assert profile["capability_trace"] == []
+        assert profile["values"] == []
+
+    def test_value_axis_choice_rejects_scorecard_field(self, monkeypatch):
+        monkeypatch.setenv("SIGNAL_INGEST_SECRET", SECRET)
+        body = {
+            "signal_type": "value_axis_choice",
+            "user_id_hash": HASH_A,
+            "nonce": "ay" * 8,
+            "payload": {
+                "axis": "survival",
+                "imprint_name": "务实",
+                "domain": "职业域",
+                "points": 2,
+                "source": "planetx",
+                "salary_match": 8,
+            },
+        }
+        r = _post(body)
+        assert r.status_code == 422
+        assert r.json()["code"] == "invalid_envelope"
+
 
 class TestSignalLogStore:
     """W2：signal_log 经 store 槽，双实现语义一致 + SQLite 重启不丢。"""

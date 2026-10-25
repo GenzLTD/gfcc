@@ -195,7 +195,12 @@ def _dispatch_signal(signal_id: str, user_id_hash: str, signal_type: str,
         logger.warning("signal-ingest: port %s has no ingest_signal, signal_id=%s dropped at port", port, signal_id)
         return
     try:
-        result = adapter.ingest_signal(signal_id, user_id_hash, payload)
+        if port == "identity":
+            result = adapter.ingest_signal(
+                signal_id, user_id_hash, payload, signal_type=signal_type,
+            )
+        else:
+            result = adapter.ingest_signal(signal_id, user_id_hash, payload)
         if not result.ok:
             logger.warning("signal-ingest: port %s rejected signal_id=%s: %s", port, signal_id, result.error)
     except Exception:  # noqa: BLE001
