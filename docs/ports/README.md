@@ -35,7 +35,7 @@
 | 端口 | 契约 | 语义 | 明确不是 |
 |---|---|---|---|
 | **circle** | `circle.v1.json` | 围坐容器：创建 / 加入 / 解散；记忆与共识的归属 | 不是隐式字符串；解散不删历史 |
-| **identity** | `identity.v1.json` | PPI：价值观、能力轨迹、承诺、营造师标签；`sub` 绑档案。1.4.0 起可选 `value_axes`（生存/自由/归属），只由 `value_axis_choice` 累加 | 不是付费档；不是职位分卡；证据源白名单，无 `optional` |
+| **identity** | `identity.v1.json` | PPI：价值观、能力轨迹、承诺、营造师标签；`sub` 绑档案。1.4.0 起可选 `value_axes`（生存/自由/归属），只由 `value_axis_choice` 累加。1.5.0 起读口与写口分开，匹配侧不能写 | 不是付费档；不是职位分卡；证据源白名单，无 `optional` |
 | **memory** | `memory.v1.json` | Dual 七库：**议题 / 行动 / 事件 / 方法论价值 / 人 / 组织 / 资源**；人与 AI 均可观察 | 不是个人备忘；AI 观察不得静默改写 |
 | **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据。1.2.0 加 `reject`/`withdraw`/`expire`（作废当前句，不改全员 ack） | 不是求职匹配；失败不得自动成功；确认必须是人 |
 | **contribution** | `contribution.v1.json` | CoCo：认定 → 兑现 → 可申诉；兑现后可回写轨迹 | 不是积分主叙事；v1 不依赖链 |

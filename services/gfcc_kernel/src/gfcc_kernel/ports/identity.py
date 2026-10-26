@@ -24,6 +24,16 @@ TRACE_SOURCE_WHITELIST = EVIDENCE_SOURCES | AUXILIARY_SOURCES
 
 COMMITMENT_STATUS = {"offered", "accepted", "fulfilled", "withdrawn"}
 
+# contracts/signals/value_axis_choice.v1.json 的字段白名单。未列出的字段一律拒绝。
+VALUE_AXIS_FIELDS = {
+    "axis",
+    "points",
+    "domain",
+    "imprint_name",
+    "source",
+    "generated_at",
+}
+
 # contracts/roles.v1.json role_enum —— 八角梯，index 越大级别越高
 ROLE_ENUM = [
     "observer",
@@ -194,19 +204,31 @@ class IdentityAdapter:
         with self._lock:
             return [dict(b) for b in self._signal_beacons]
 
+    def read_value_axes(self, sub: str) -> Optional[Dict[str, int]]:
+        """返回原值快照。没有选择过则是 None。不创建画像，也不改累加值。"""
+        with self._lock:
+            profile = self._profiles.get(sub)
+            axes = profile.get("value_axes") if profile else None
+            if not isinstance(axes, dict):
+                return None
+            return {key: int(axes.get(key, 0)) for key in ("survival", "freedom", "belonging")}
+
     def _ingest_value_axis(self, signal_id: str, user_id_hash: str, payload: Dict[str, Any]) -> PortOpResult:
-        """把人选的 1–5 点加到指定轴。职位分卡字段出现时拒绝。"""
+        """把人选的 1–5 点加到指定轴。只接受契约列出的字段。"""
+        extra = set(payload) - VALUE_AXIS_FIELDS
+        if extra:
+            return PortOpResult(
+                ok=False,
+                error=f"value_axis_choice payload has unlisted fields: {sorted(extra)}",
+            )
         axis = payload.get("axis")
         points = payload.get("points")
         if axis not in ("survival", "freedom", "belonging"):
             return PortOpResult(ok=False, error="axis must be survival, freedom, or belonging")
         if isinstance(points, bool) or not isinstance(points, int) or not 1 <= points <= 5:
             return PortOpResult(ok=False, error="points must be an integer within 1..5")
-        leaked = set(payload) & {
-            "salary_match", "location_match", "culture_workload_match", "overall",
-        }
-        if leaked:
-            return PortOpResult(ok=False, error="job-match scores must not be written onto value_axes")
+        if payload.get("source") != "planetx":
+            return PortOpResult(ok=False, error="source must be planetx")
         with self._lock:
             profile = self._ensure(user_id_hash)
             axes = profile.get("value_axes")

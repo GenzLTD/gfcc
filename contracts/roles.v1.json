@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GFCC Community Role Ladder v1",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Eight-step growth ladder in ethos Principal.roles / permissions. Not eight microservices. Orthogonal to identity.builder_tags (craft). Admin flag is an ops exception, not the long-term promotion mechanism.",
   "home": "ethos JWT claims",
   "orthogonal_to": "identity.builder_tags",
@@ -103,5 +103,11 @@
     "ops_exception": "admin/system may set roles for repair; must audit as admin.role.set"
   },
   "deny_by_default": true,
-  "scope_unlisted": "reject"
+  "scope_unlisted": "reject",
+  "service_scopes": {
+    "planetx": ["identity.value_axes.read", "identity.value_axes.write"],
+    "system": ["identity.value_axes.read", "identity.value_axes.write"],
+    "job_match": ["identity.value_axes.read"]
+  },
+  "value_axes_rule": "identity.write does not include identity.value_axes.write. Only planetx and system may write. job_match may read the raw snapshot and must not write it back."
 }

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GFCC Identity Port v1 (PPI)",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "port": "identity",
   "description": "Personal-public identity for 格契. Values, capability trace, commitments, builder tags, and human-chosen value axes. Role = growth stage (能不能); builder_tags = craft (擅长做什么). uid is ethos Principal.sub. Paid tier is quota only.",
   "not": [
@@ -129,7 +129,7 @@
       "value_axes": {
         "type": "object",
         "additionalProperties": false,
-        "description": "Cumulative points from signal value_axis_choice only. survival=钱多, freedom=事少, belonging=离家近. Absent until the first human choice. Not a match score. job_match may read this object and must not write it.",
+        "description": "Cumulative points from signal value_axis_choice only. survival=钱多, freedom=事少, belonging=离家近. Absent until the first human choice. Not a match score. The kernel returns this raw snapshot. Normalization stays in job_match and is not written back. These integers are not comparable across users. job_match may read this object and must not write it.",
         "properties": {
           "survival": { "type": "integer", "minimum": 0 },
           "freedom": { "type": "integer", "minimum": 0 },
@@ -153,10 +153,15 @@
       "min_role": "system",
       "notes": "Only evidence-weight sources may mint capability. Auxiliary (job_match/mbti/ai_observed) annotates. contribution.fulfilled is the primary mint path. This operation does not write value_axes."
     },
+    "read_value_axes": {
+      "scope": "identity.value_axes.read",
+      "callers": ["job_match", "planetx", "system"],
+      "notes": "Returns the raw snapshot. A second read does not change it. identity.read does not grant this scope."
+    },
     "apply_value_axis": {
       "scope": "identity.value_axes.write",
-      "min_role": "system",
-      "notes": "Only signal value_axis_choice may add 1–5 points to the choice's own axis. Domain default axis is not a writer. job_match must not call this."
+      "callers": ["planetx", "system"],
+      "notes": "Only signal value_axis_choice may add 1–5 points to the choice's own axis. Domain default axis is not a writer. job_match must not call this. identity.write does not grant this scope."
     }
   },
   "optional_plugins": {

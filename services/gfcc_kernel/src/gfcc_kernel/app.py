@@ -31,6 +31,7 @@ from .dispatcher import parse_then_dispatch
 from .envelope import AskRequest, AskResponse
 from .registry import PortRegistry
 from .security import KernelPolicy, build_security
+from .value_axes_access import VALUE_AXIS_READ, VALUE_AXIS_WRITE, decide
 from .signal import (
     PayloadError,
     SIGNAL_ROUTE,
@@ -275,6 +276,66 @@ async def v1_signal_ingest(request: Request) -> JSONResponse:
             "port": port,
         },
     )
+
+
+# --------------------------------------------------------------------------- #
+# /v1/identity/value-axes（价值轴读 / 写门禁）
+# ETHOS_AUTH_SECRET 为空时拒绝，不用 stub 把这道门验成通过。
+# --------------------------------------------------------------------------- #
+
+def _bearer_claims(request: Request):
+    secret = os.getenv("ETHOS_AUTH_SECRET", "").strip()
+    if not secret:
+        return None, JSONResponse(
+            status_code=503,
+            content={"code": "auth_unconfigured", "detail": "ETHOS_AUTH_SECRET unset"},
+        )
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None, JSONResponse(status_code=401, content={"code": "unauthorized"})
+    from ethos.security.verifier import HmacJwtVerifier
+
+    ctx = HmacJwtVerifier(secret).verify(header.split(" ", 1)[1].strip())
+    if not ctx.verified or ctx.principal is None:
+        return None, JSONResponse(status_code=401, content={"code": "unauthorized"})
+    return ctx.principal, None
+
+
+@app.post("/v1/identity/value-axes")
+async def v1_identity_value_axes(request: Request) -> JSONResponse:
+    principal, denied = _bearer_claims(request)
+    if denied is not None:
+        return denied
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    if not isinstance(body, dict):
+        body = {}
+    caller = str(principal.claims.get("caller") or "")
+    op = body.get("op")
+    user_id_hash = str(body.get("user_id_hash") or "")
+    if not user_id_hash:
+        return JSONResponse(status_code=422, content={"code": "invalid_envelope", "detail": "user_id_hash required"})
+    identity = _registry.get("identity")
+    if op == "read":
+        if decide(caller, principal.permissions, VALUE_AXIS_READ) != "allow":
+            return JSONResponse(status_code=403, content={"code": "forbidden", "detail": VALUE_AXIS_READ})
+        return JSONResponse(status_code=200, content={"value_axes": identity.read_value_axes(user_id_hash)})
+    if op == "apply":
+        if decide(caller, principal.permissions, VALUE_AXIS_WRITE) != "allow":
+            return JSONResponse(status_code=403, content={"code": "forbidden", "detail": VALUE_AXIS_WRITE})
+        payload = body.get("payload") if isinstance(body.get("payload"), dict) else {}
+        result = identity.ingest_signal(
+            signal_id=os.urandom(16).hex(),
+            user_id_hash=user_id_hash,
+            payload=payload,
+            signal_type="value_axis_choice",
+        )
+        if not result.ok:
+            return JSONResponse(status_code=422, content={"code": "invalid_envelope", "detail": result.error})
+        return JSONResponse(status_code=200, content={"value_axes": result.data.get("value_axes")})
+    return JSONResponse(status_code=422, content={"code": "invalid_envelope", "detail": "op must be read or apply"})
 
 
 # --------------------------------------------------------------------------- #

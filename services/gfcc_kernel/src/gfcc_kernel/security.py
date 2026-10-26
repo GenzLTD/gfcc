@@ -30,6 +30,8 @@ PORT_SCOPES = {
     "identity": {
         "read": "identity.read",
         "write": "identity.write",
+        "value_axes_read": "identity.value_axes.read",
+        "value_axes_write": "identity.value_axes.write",
     },
     "memory": {
         "read": "memory.read",

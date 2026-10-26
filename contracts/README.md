@@ -2,7 +2,7 @@
 
 本目录是 **L0 真源** 的 JSON。人读先看 [`docs/vision.md`](../docs/vision.md)，再看 [`docs/ports/README.md`](../docs/ports/README.md)。版本规则见 [`docs/VERSIONING.md`](../docs/VERSIONING.md)。
 
-当前契约版本：**1.4.0**（一等端口 / Ask 信封；1.3.0 的过渡校验者、终端模式、store 适配器仍在；身份增加只由人类选择写入的 `value_axes`）· 信号线 **1.1.0**（与 1.4.0 分家族，互不影响；新增 `value_axis_choice`）
+当前契约版本：**1.5.0**（一等端口 / Ask 信封。1.4.0 的 `value_axes` 仍在。匹配侧只有 `identity.value_axes.read`，写口只属于 `planetx` / `system`。职位分区间在 `job_match.v1.json`）· 信号线 **1.1.0**（与 1.5.0 分家族，互不影响；内核软件版本仍是 1.1.0）
 
 | 文件 | 端口 / 层 |
 |---|---|
@@ -18,5 +18,6 @@
 | `contribution.v1.json` | CoCo 贡献 |
 | `roles.v1.json` | 八角梯（ethos claims，非独立服务） |
 | `registry.v1.json` | 默认适配器 vs 可选画像 |
+| `job_match.v1.json` | 职位分区间。auxiliary，不写价值轴 |
 
 实现向这些文件适配。改能力：过价值层 → 改 JSON → 改提纲 → 改代码。
