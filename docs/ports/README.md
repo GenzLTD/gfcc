@@ -1,7 +1,7 @@
 # 格契端口真源提纲
 
 > **价值层（先读）**：[docs/vision.md](../vision.md) —— 为谁而生、成什么算成。迷茫时：[围坐初心](../reviews/围坐初心_不是聊天室_防自嗨_2026-08-30.md)。本页是机器可执行的契约层。  
-> **地位**：本页 + `contracts/*.v1.json` 是 GFCC / 格契对外能力的**契约真源**。实现向它适配；改能力先过价值层，再改契约，再改代码。  
+> **地位**：本页 + `contracts/*.v1.json` 是 GFCC / 格契对外能力的**契约真源**。实现向它适配；改能力先过价值层，再改契约，再改代码。L0 当前为 1.6.0，跨产品邀请语义见 `contracts/invitation.v1.json`。
 > **方法**（学自四份，不抄产品字段）：Steedar CONTRACT（契约权威、先改真源）；ethos 网关协议（定义方 vs 复刻方、`sub` 为 uid、deny-by-default）；Tatha 单入口（一个 Ask 信封、内部可换）；Agent Runtime 槽位（`llm/tools/session/policy/store`，模式 = 插件清单）。共识课：阈值 + **双向确认**，「有结果」不是成功。  
 > **产品轴**：Genesis · Fellowship · Consensus · Circle。交付**体系与能力**；数据是使用方的，首次为空。
 
@@ -39,6 +39,14 @@
 | **memory** | `memory.v1.json` | Dual 七库：**议题 / 行动 / 事件 / 方法论价值 / 人 / 组织 / 资源**；人与 AI 均可观察 | 不是个人备忘；AI 观察不得静默改写 |
 | **consensus** | `consensus.v1.json` | 共议：分数 ≥ 阈值 **且** 双向确认才 `verified`；评分必须带证据。1.2.0 加 `reject`/`withdraw`/`expire`（作废当前句，不改全员 ack） | 不是求职匹配；失败不得自动成功；确认必须是人 |
 | **contribution** | `contribution.v1.json` | CoCo：认定 → 兑现 → 可申诉；兑现后可回写轨迹 | 不是积分主叙事；v1 不依赖链 |
+
+### 联邦契约（不加入默认五端口）
+
+| 契约 | 语义 | 明确不是 |
+|---|---|---|
+| `invitation.v1.json` | 邀请签发、受众/用途限定、验证与原子兑换；issuer/redeemer 均绑定服务端验证后的规范 `sub`。外部 `(issuer, subject)` 由可信身份权威映射到 `sub` | 登录 token、设备凭证、PlanetX fleet 邀请的通用替代品 |
+
+邀请资格、用户身份、设备持有证明、`ref` 归因和 `region` 计费展示必须分离。`terminal_invite` 只能由终端邀请权威核验；`fleet_invite` 只能由 PlanetX 核验；`ref` 与 `region` 不授予任何身份或邀请资格。未来要求可穿戴设备时，使用绑定当前邀请、audience、规范 `sub` 的一次性挑战和已登记凭证证明；UUID 仅作查找。PWA 当前设备策略为 `not_required`，不宣称硬件认证。设备算法、密钥存储与硬件证明配置待设备方案定型后再增补。
 
 默认 `tools` 清单 = 上表五端口。`gfcc.terminal` 的清单只有 identity 与 memory。DemoPeter、agentmemory/iii、job / poetry / credit / mbti **不得**出现在默认清单。`job_match` 仍是可选画像：画像上已有 `value_axes` 时必须读取，并用薪资、强度、地点三项去解释钱多、事少、离家近；模型打出的分留在这一份职位上，禁止写回 `value_axes` 或 `values`。`ctx.store` 的可选适配器含 `cortex-mcp`（终端侧）与 `gfcc`（pgvector 库），两者只通过 `actor_sub` 关联；启动时为空。
 

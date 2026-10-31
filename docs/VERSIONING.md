@@ -1,7 +1,7 @@
 # 契约版本策略
 
 > 契约是权威，就必须回答权威怎么变。价值层 [`docs/vision.md`](vision.md) 约束本文件。  
-> **现状锚点（2026-10-26）**：Ask / 五端口 **1.5.0**（1.4.0 的 `identity.value_axes` 仍在。写口 `identity.value_axes.write` 只属于 `planetx` / `system`；`job_match` 只有读口。职位分区间见 `job_match.v1.json`，`writes_to: none`。内核软件版本仍是 **1.1.0**。1.3.0 的过渡校验者 `zervi-auth`、模式 `gfcc.terminal`、store 适配器 `cortex-mcp` 与 pgvector 库 `gfcc` 仍在）。1.2.0 的 consensus `rejected`/`withdrawn` 仍在。信号家族 **1.1.0**（`value_axis_choice` 仍在；旧两种 payload 语义不变）。两族不同号。管道层 + 拓扑层（P3 归档）已过；**围坐 MVP 未开**（人未齐，见 [`MVP_资源配置清单.md`](MVP_资源配置清单.md)）。本页管契约怎么变，**不管**招人、会场 UI、进程内存实现。
+> **现状锚点（2026-11-01）**：L0 契约家族 **1.6.0**（新增独立 `invitation.v1.json`；外部身份以 namespaced `(issuer, subject)` 映射到规范 `principal.sub`；邀请按 audience/purpose 隔离并由已认证 redeemer 原子兑换；设备证明只定义策略与一次性 challenge/proof 扩展形状）。`identity.value_axes` 仍在；写口 `identity.value_axes.write` 只属于 `planetx` / `system`；`job_match` 只有读口，职位分区间见 `job_match.v1.json`，`writes_to: none`。内核软件版本仍是 **1.1.0**。信号家族 **1.1.0**（与 L0 分开；`value_axis_choice` 及既有 payload 语义不变）。当前 PWA 不实现硬件/可穿戴设备认证；硬件算法、密钥存储、设备登记及证明等级待设备方案定型。围坐 MVP 状态不因本次契约新增而改变。
 
 ## Semver（`contracts/*.json` 的 `version`）
 
@@ -11,7 +11,7 @@
 | 兼容新增 | **次版本** | 加字段、加端口、加 `status=partial`、新 `signal_type`（旧 payload 只追加、不改语义） |
 | 文案/示例 | **修订号** | 注释、zh 标签 |
 
-当前线：Ask / 五端口 **1.5.0**（`ask.envelope` + `circle` / `identity` / `memory` / `consensus` / `contribution` + `roles` + `registry` + `job_match`）。信号线（`signal.envelope` + `contracts/signals/`）**1.1.0**，与 1.5.0 分家族，互不要求同号。内核软件版本仍是 **1.1.0**。`signal_type` 为 `personality_beacon`、`consensus_match`、`value_axis_choice`。
+当前线：L0 **1.6.0**（`ask.envelope` + 五端口 + `roles` + `registry` + `job_match` + 联邦契约 `invitation`，该契约不加入默认五端口）。信号线（`signal.envelope` + `contracts/signals/`）**1.1.0**，与 L0 分家族，互不要求同号。内核软件版本仍是 **1.1.0**。`signal_type` 为 `personality_beacon`、`consensus_match`、`value_axis_choice`。
 
 ## 变更流程
 
