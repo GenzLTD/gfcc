@@ -24,6 +24,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .adapters import bind_profile_demo
+from .egress import SIGNAL_PRIVACY_TIER, EgressDenied, guard_plaintext_egress
 from .adapters.agentmemory_store import AgentMemoryIIIStore
 from .circle_flow import get_store as build_circle_flow
 from .circle_web import router as circle_web_router
@@ -184,6 +185,24 @@ async def root_index() -> HTMLResponse:
 # /v1/signal-ingest（Step3 W1-W3：机机事件入口）
 # --------------------------------------------------------------------------- #
 
+def _block_plaintext_egress(signal_type: str) -> Optional[str]:
+    """目的地区未配置时返回 None（本区下发）。配置了则只允许 allow，其余结论拦住明文。"""
+    dest = os.getenv("GFCC_EGRESS_DEST_REGION", "").strip()
+    if not dest:
+        return None
+    source = os.getenv("GFCC_SOURCE_REGION", "").strip()
+    tier = SIGNAL_PRIVACY_TIER.get(signal_type, "L0_PII")
+    try:
+        guard_plaintext_egress(tier, source, dest)
+    except EgressDenied as exc:
+        logger.warning(
+            "signal-ingest: plaintext egress blocked tier=%s %s->%s verdict=%s",
+            tier, source or "?", dest, exc.verdict,
+        )
+        return exc.verdict
+    return None
+
+
 def _dispatch_signal(signal_id: str, user_id_hash: str, signal_type: str,
                      payload: Dict[str, Any], port: str) -> None:
     """把新信号下发给对应端口适配器。
@@ -264,18 +283,23 @@ async def v1_signal_ingest(request: Request) -> JSONResponse:
     signal_id = result["signal_id"]
 
     # 5) 端口路由（仅新信号下发；duplicate 直接返回，不重复触发端口）
+    #    配置了目的地区时，下发前先过流向门。本区（未配置目的地区）不挡。
     port = route_signal(env.signal_type)
+    egress_verdict = None
     if not result["duplicate"]:
-        _dispatch_signal(signal_id, env.user_id_hash, env.signal_type, env.payload, port)
+        egress_verdict = _block_plaintext_egress(env.signal_type)
+        if egress_verdict is None:
+            _dispatch_signal(signal_id, env.user_id_hash, env.signal_type, env.payload, port)
 
-    return JSONResponse(
-        status_code=200,
-        content={
-            "status": "duplicate" if result["duplicate"] else "stored",
-            "signal_id": signal_id,
-            "port": port,
-        },
-    )
+    content = {
+        "status": "duplicate" if result["duplicate"] else "stored",
+        "signal_id": signal_id,
+        "port": port,
+    }
+    if egress_verdict is not None:
+        content["egress"] = "blocked"
+        content["verdict"] = egress_verdict
+    return JSONResponse(status_code=200, content=content)
 
 
 # --------------------------------------------------------------------------- #
