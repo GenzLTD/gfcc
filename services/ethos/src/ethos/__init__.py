@@ -2,6 +2,7 @@
 
 定位：
 - security：纯验证者认证（不签发）+ 库内配额（可插拔远程）+ 本地审计（可选上报）。
+- flow：跨境流向门（隐私档 × 来源地区 × 目的地区 → 四种 verdict）。配额档不在这里。
 - resolver：服务发现 + 资源定位（跨平台，消灭盘符硬编码）。
 
 与 tenet 的差异：
@@ -12,9 +13,9 @@
 
 from __future__ import annotations
 
-from . import registry, security, resolver
+from . import flow, registry, resolver, security
 from .registry import Registry
 
 __version__ = "0.1.0"
 
-__all__ = ["registry", "security", "resolver", "Registry", "__version__"]
+__all__ = ["flow", "registry", "resolver", "security", "Registry", "__version__"]

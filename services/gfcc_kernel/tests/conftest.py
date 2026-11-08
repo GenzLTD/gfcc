@@ -24,3 +24,5 @@ os.environ["LLM_PROVIDER"] = "stub"
 os.environ.pop("SIGNAL_INGEST_SECRET", None)
 os.environ["ETHOS_AUTH_SECRET"] = ""
 os.environ["GFCC_MODE"] = "gfcc.default"
+os.environ["GFCC_EGRESS_DEST_REGION"] = ""
+os.environ["GFCC_SOURCE_REGION"] = ""
