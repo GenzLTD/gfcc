@@ -1,50 +1,37 @@
 name: Deploy
 
-# 触发方式：
-#   1. 手动：Actions → Deploy → Run workflow
-#   2. 打 tag：git tag v1.0.0 && git push origin v1.0.0
+# 天翼已退役。本工作流不再登录旧机，也不再重启旧机上的 gfcc-kernel。
+# 打 tag（v*）或手动运行时，通知 thomas-core 的 deploy-106：
+# 把这个提交的契约钉进核，再部署到新机。
+# 新机地址只存在于 thomas-core 的 vars.DEPLOY106_HOST，本仓不写主机名或 IP。
 #
-# 目标机: 天翼云 14.29.216.219 · /data/gfcc（git 树，origin=github GenzLTD/gfcc）
-# gfcc-kernel 由 systemd（gfcc-kernel.service）托管 uvicorn :5211，
-# 非 docker compose —— 部署 = git checkout <SHA> + systemctl restart gfcc-kernel。
-#
-# GitHub Secrets（必填）:
-#   DEPLOY_HOST     - 14.29.216.219
-#   DEPLOY_USER     - root
-#   DEPLOY_SSH_KEY  - root SSH 私钥全文（天翼可直接访问 github GenzLTD/gfcc）
-#   DEPLOY_PORT     - 22（可选）
+# Secret（本仓）:
+#   THOMAS_DISPATCH_TOKEN  对 GenzLTD/thomas-core 具备 Contents: write 的令牌
+
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
 
 jobs:
-  deploy:
+  notify-thomas-core:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Deploy to /data/gfcc and restart gfcc-kernel
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || 22 }}
-          script: |
-            set -euo pipefail
-            cd /data/gfcc
-            export GIT_SHA="${{ github.sha }}"
-            git fetch origin main
-            git checkout --force "${GIT_SHA}"
-            echo "=== checked out $(git rev-parse HEAD) ==="
-            systemctl restart gfcc-kernel
-            for i in $(seq 1 20); do
-              if curl -sf http://127.0.0.1:5211/health >/dev/null 2>&1; then
-                echo "gfcc-kernel healthy after ${i}s"
-                break
-              fi
-              sleep 2
-            done
-            curl -sf http://127.0.0.1:5211/health || { journalctl -u gfcc-kernel -n 40 --no-pager; exit 1; }
-            echo "=== deploy OK ==="
+      - name: 通知 deploy-106 同步本提交
+        env:
+          TOKEN: ${{ secrets.THOMAS_DISPATCH_TOKEN }}
+          SHA: ${{ github.sha }}
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "$TOKEN" ]; then
+            echo "THOMAS_DISPATCH_TOKEN 未配置，拒绝把部署指回旧机"
+            exit 1
+          fi
+          payload=$(python3 -c 'import json,os; print(json.dumps({"event_type":"gfcc-tag","client_payload":{"sha":os.environ["SHA"],"ref":os.environ["REF"]}}))')
+          curl -sfS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            https://api.github.com/repos/GenzLTD/thomas-core/dispatches \
+            -d "$payload"
+          echo "dispatched gfcc-tag sha=$SHA"
